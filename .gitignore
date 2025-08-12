@@ -1,0 +1,15 @@
+/k1
+/k2
+/k3
+/k4
+/.vscode
+/venv
+/__pycache__
+/slurm_logs
+2mer_angles_8d.csv
+2mer_angles.csv
+angle_density_grid.npy
+/8Ddihedrals/cluster_assignments.csv
+run.sh
+run2.sh
+cufile.log
