@@ -1,80 +1,114 @@
+print("=== PYTHON SCRIPT STARTED ===\n")
+print("=== PYTHON SCRIPT STARTED ===\n")
+print("=== PYTHON SCRIPT STARTED ===\n")
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import sys
 import os
+import gc
+import psutil
 
 # --- CONFIGURATION ---
-# The original data file with the 4D angular data.
 ANGLES_FILE = '2mer_angles.csv'
-
-# The columns that contain the angular data for plotting.
 ANGLE_COLUMNS = ['phi_i', 'psi_i', 'phi_i+1', 'psi_i+1']
+OUTPUT_PLOT_FILE = 'cluster_pair_plot3.png'  # Change to .pdf for vector format
+MAX_POINTS = 1_000_000
 
-# The output file name for the plot.
-OUTPUT_PLOT_FILE = 'cluster_pair_plot.png'
-
+def memory_report():
+    return f"Memory used: {psutil.Process().memory_info().rss / (1024**2):.2f} MB"
 
 def create_cluster_plot(assignments_file: str):
-    """
-    Loads angular data and cluster assignments, merges them,
-    and generates a 4x4 pair plot colored by cluster.
-
-    Args:
-        assignments_file (str): The path to the cluster_assignments.csv file.
-    """
-    # --- 1. Validate Input Files ---
+    print("=== PYTHON SCRIPT STARTED ===")
+    print(f"Initial memory: {memory_report()}")
+    
+    # 1. Validate Input Files
     if not os.path.exists(ANGLES_FILE):
-        print(f"Error: The angular data file '{ANGLES_FILE}' was not found.")
+        print(f"Error: Angular data file '{ANGLES_FILE}' not found")
         sys.exit(1)
-
     if not os.path.exists(assignments_file):
-        print(f"Error: The cluster assignments file '{assignments_file}' was not found.")
+        print(f"Error: Cluster assignments file '{assignments_file}' not found")
         sys.exit(1)
 
-    # --- 2. Load and Merge Data ---
-    print("Loading and merging data...")
+    # 2. Load Data with Memory Optimization
+    print("Loading data with optimized dtypes...")
     try:
-        df_angles = pd.read_csv(ANGLES_FILE)
-        df_clusters = pd.read_csv(assignments_file)
+        df_angles = pd.read_csv(ANGLES_FILE, dtype={
+            'phi_i': 'float32',
+            'psi_i': 'float32',
+            'phi_i+1': 'float32',
+            'psi_i+1': 'float32'
+        })
+        print(f"Angles loaded. {memory_report()}")
+
+        df_clusters = pd.read_csv(assignments_file, dtype={
+            'Observation_Identifier': 'int32',
+            'Assigned_Cluster': 'category'
+        })
+        print(f"Clusters loaded. {memory_report()}")
+
     except Exception as e:
-        print(f"Failed to load data files: {e}")
+        print(f"Failed to load data: {e}")
         sys.exit(1)
 
-    # The 'Observation_Identifier' corresponds to the index of the original angles file.
-    # We use the index of df_angles to merge with the identifier from df_clusters.
+    # 3. Merge and Downsample
+    print("Merging datasets...")
     df_clusters['Observation_Identifier'] = df_clusters['Observation_Identifier'].astype(int)
-    
-    # Merge the two dataframes based on the identifier/index.
     df_final = pd.merge(df_angles, df_clusters, 
-                        left_index=True, 
-                        right_on='Observation_Identifier')
-
-    print(f"Successfully merged {len(df_final)} data points.")
-
-    # --- 3. Generate the 4x4 Pair Plot ---
-    print(f"Generating the pair plot... this may take some time for large datasets.")
+                       left_index=True,
+                       right_on='Observation_Identifier')
     
-    # Use seaborn's pairplot to create the 4x4 grid.
-    # `vars` specifies the dimensions to plot.
-    # `hue` specifies the column to use for coloring.
-    pair_plot = sns.pairplot(df_final,
-                             vars=ANGLE_COLUMNS,
-                             hue='Assigned_Cluster',
-                             palette='viridis',  # Use a colorblind-friendly and distinct palette
-                             plot_kws={'s': 5, 'alpha': 0.6}) # Style scatter plots
+    if len(df_final) > MAX_POINTS:
+        print(f"Downsampling from {len(df_final)} to {MAX_POINTS} points...")
+        df_final = df_final.sample(n=MAX_POINTS, random_state=42)
+    
+    del df_angles, df_clusters
+    gc.collect()
+    print(f"Merged data. {memory_report()}")
 
-    # --- 4. Save the Plot ---
-    print(f"Saving plot to '{OUTPUT_PLOT_FILE}'...")
-    pair_plot.savefig(OUTPUT_PLOT_FILE, dpi=300) # Save with high resolution
-    print("Done.")
+    # 4. HD Visualization
+    print("Creating HD pair plot...")
+    try:
+        # Set up figure
+        plt.figure(figsize=(16, 16))
+        
+        # Create plot with small points
+        pair_plot = sns.pairplot(
+            df_final,
+            vars=ANGLE_COLUMNS,
+            hue='Assigned_Cluster',
+            palette='viridis',
+            plot_kws={
+                's': 1,           # Very small points
+                'alpha': 0.15,    # Increased transparency
+                'linewidth': 0,   # No point borders
+                'rasterized': True # Better HD rendering
+            },
+            diag_kind='kde',
+            corner=True,
+            height=4             # Subplot size in inches
+        )
 
+        # Save with high resolution
+        plt.tight_layout()
+        pair_plot.savefig(
+            OUTPUT_PLOT_FILE,
+            dpi=600,             # Ultra-high DPI
+            bbox_inches='tight', # No extra whitespace
+            quality=100          # Maximum quality
+        )
+        plt.close('all')
+        gc.collect()
+        
+    except Exception as e:
+        print(f"Plotting failed: {e}")
+        sys.exit(1)
+
+    print(f"Done. Final memory: {memory_report()}")
 
 if __name__ == "__main__":
-    # The script expects one command-line argument: the path to the cluster assignments file.
     if len(sys.argv) != 2:
-        print("Usage: python visualize_clusters.py <path_to_cluster_assignments.csv>")
+        print("Usage: python visualize_clusters.py <cluster_assignments.csv>")
         sys.exit(1)
-
-    cluster_assignments_path = sys.argv[1]
-    create_cluster_plot(cluster_assignments_path)
+    
+    create_cluster_plot(sys.argv[1])
