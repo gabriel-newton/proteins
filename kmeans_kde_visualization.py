@@ -1,7 +1,4 @@
 print("=== PYTHON SCRIPT STARTED ===\n")
-print("=== PYTHON SCRIPT STARTED ===\n")
-print("=== PYTHON SCRIPT STARTED ===\n")
-print("=== PYTHON SCRIPT STARTED ===\n")
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -14,8 +11,8 @@ import psutil
 # Note: These are now defaults. It's better to pass them as arguments.
 ANGLES_FILE_DEFAULT = '2mer_angles.csv'
 ANGLE_COLUMNS_DEFAULT = ['phi_i', 'psi_i', 'phi_i+1', 'psi_i+1']
-OUTPUT_PLOT_FILE_DEFAULT = 'cluster_pair_plot3.png'
-MAX_POINTS = 1_000_000
+MAX_POINTS = 100_000
+OUTPUT_PLOT_FILE_DEFAULT = f'kmeans_kde_plot_{MAX_POINTS}.png'
 
 def memory_report():
     return f"Memory used: {psutil.Process().memory_info().rss / (1024**2):.2f} MB"
@@ -59,9 +56,9 @@ def create_cluster_plot(assignments_file: str,
     df_clusters.set_index('Observation_Identifier', inplace=True)
     df_final = pd.merge(df_angles, df_clusters, left_index=True, right_index=True)
     
-    # if len(df_final) > MAX_POINTS:
-    #     print(f"Downsampling from {len(df_final)} to {MAX_POINTS} points...")
-    #     df_final = df_final.sample(n=MAX_POINTS, random_state=42)
+    if len(df_final) > MAX_POINTS:
+        print(f"Downsampling from {len(df_final)} to {MAX_POINTS} points...")
+        df_final = df_final.sample(n=MAX_POINTS, random_state=42)
     
     del df_angles, df_clusters
     gc.collect()
