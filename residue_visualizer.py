@@ -10,6 +10,7 @@ from typing import List, Optional
 import json
 
 class ResidueVisualizer:
+    # ... (The Python part of the class remains identical to the last version)
     """
     A class to load residue data and generate interactive 3D visualizations
     of Ramachandran plots, saved as self-contained HTML files.
@@ -145,17 +146,13 @@ class ResidueVisualizer:
                     const plotDiv = document.getElementById('{plot_div_id}');
                     if (!plotDiv) return;
 
-                    // This main function now contains ALL logic that interacts with the plot.
-                    // It will only be called once the plot is fully rendered.
                     const initializePlotInteractivity = () => {{
                         const colorscaleMap = {colorscales_json};
                         const scaleArgs = {scale_args_json};
                         const rangeArgs = {range_args_json};
                         
                         const currentState = {{
-                            scale: 'linear',
-                            range: '180',
-                            colorscale: 'nRainbow'
+                            scale: 'linear', range: '180', colorscale: 'nRainbow'
                         }};
 
                         const updateNavLinks = () => {{
@@ -166,7 +163,6 @@ class ResidueVisualizer:
                             }});
                         }};
 
-                        // == Step 1: Read URL and apply initial state ==
                         const params = new URLSearchParams(window.location.search);
                         const scale = params.get('scale');
                         const range = params.get('range');
@@ -185,39 +181,41 @@ class ResidueVisualizer:
                            currentState.colorscale = colorscale;
                         }}
                         
-                        // == Step 2: Set the navigation links correctly from the very start ==
                         updateNavLinks();
 
-                        // == Step 3: Listen for any subsequent user interactions ==
-                        // The event listeners are now robustly attached after the plot is ready.
-                        plotDiv.on('plotly_update', (eventData) => {{
-                            const layoutUpdate = eventData.layout;
-                            if (layoutUpdate['scene.zaxis.type']) {{
-                                currentState.scale = layoutUpdate['scene.zaxis.type'];
+                        // --- FIX: Correctly parse the event data object ---
+                        plotDiv.on('plotly_update', (updateData) => {{
+                            // The 'updateData' object directly contains the layout changes
+                            if (updateData && updateData.scene && updateData.scene.zaxis && updateData.scene.zaxis.type) {{
+                                currentState.scale = updateData.scene.zaxis.type;
                             }}
-                            if (layoutUpdate['scene.xaxis.range']) {{
-                                // Check the max range value to determine 180 vs 360
-                                currentState.range = (layoutUpdate['scene.xaxis.range'][1] > 200) ? '360' : '180';
+                            if (updateData && updateData.scene && updateData.scene.xaxis && updateData.scene.xaxis.range) {{
+                                currentState.range = (updateData.scene.xaxis.range[1] > 200) ? '360' : '180';
                             }}
                             updateNavLinks();
                         }});
 
-                        plotDiv.on('plotly_restyle', (eventData) => {{
-                            // This event is for colorscale. It's harder to get the name back,
-                            // so we find it by comparing the raw color data.
-                            const newColorscaleData = JSON.stringify(eventData[0].colorscale[0]);
-                            for (const name in colorscaleMap) {{
-                                if (JSON.stringify(colorscaleMap[name]) === newColorscaleData) {{
-                                    currentState.colorscale = name;
-                                    break;
+                        // This listener is specifically for trace properties like colorscale
+                        plotDiv.on('plotly_restyle', (restyleData) => {{
+                            try {{
+                                // restyleData is an array where the first element is the update object
+                                const updateObject = restyleData[0];
+                                if (updateObject && updateObject.colorscale) {{
+                                    const newColorscaleData = JSON.stringify(updateObject.colorscale[0]);
+                                    for (const name in colorscaleMap) {{
+                                        if (JSON.stringify(colorscaleMap[name]) === newColorscaleData) {{
+                                            currentState.colorscale = name;
+                                            break;
+                                        }}
+                                    }}
                                 }}
+                                updateNavLinks();
+                            }} catch(e) {{
+                                // Fails gracefully if the object structure is unexpected
                             }}
-                            updateNavLinks();
                         }});
                     }};
 
-                    // This is the most important part: we only run our entire logic
-                    // ONCE, after the plot signals that it has finished drawing.
                     plotDiv.once('plotly_afterplot', initializePlotInteractivity);
 
                 }})();
