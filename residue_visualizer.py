@@ -10,7 +10,6 @@ from typing import List, Optional
 import json
 
 class ResidueVisualizer:
-    # ... (The Python part of the class remains identical to the last version)
     """
     A class to load residue data and generate interactive 3D visualizations
     of Ramachandran plots, saved as self-contained HTML files.
@@ -23,15 +22,13 @@ class ResidueVisualizer:
         
         try:
             self.df = pd.read_csv(self.input_file, engine='python')
-            if len(sys.argv) > 1 and not sys.argv[1].isdigit():
-                print(f"Successfully loaded data for residue '{self.residue}' from '{self.input_file}'.")
         except FileNotFoundError:
             raise FileNotFoundError(f"Error: The file '{self.input_file}' was not found.")
         except pd.errors.EmptyDataError:
             print(f"Warning: The file '{self.input_file}' is empty.")
             self.df = pd.DataFrame()
 
-    def _build_figure(self, initial_colorscale: str = 'nRainbow', initial_log_scale: bool = False) -> go.Figure:
+    def _build_figure(self) -> go.Figure:
         if self.df is None or self.df.empty:
             return None
 
@@ -102,164 +99,160 @@ class ResidueVisualizer:
                              buttons=[dict(label="-180° to 180°", method="update", args=self.range_button_args[0]), dict(label="0° to 360°", method="update", args=self.range_button_args[1])])
 
         fig = go.Figure()
-        fig.add_trace(go.Surface(z=z_180, x=x_180, y=y_180, surfacecolor=log_z_180 if initial_log_scale else z_180, colorscale=self.available_colorscales[initial_colorscale], cmin=np.nanmin(log_z_180) if initial_log_scale else 1, colorbar=dict(title='Count', len=0.75), connectgaps=False, visible=True))
-        fig.add_trace(go.Surface(z=z_360, x=x_360, y=y_360, surfacecolor=log_z_360 if initial_log_scale else z_360, colorscale=self.available_colorscales[initial_colorscale], cmin=np.nanmin(log_z_360) if initial_log_scale else 1, colorbar=dict(title='Count', len=0.75), connectgaps=False, visible=False))
+        fig.add_trace(go.Surface(z=z_180, x=x_180, y=y_180, surfacecolor=z_180, colorscale=nRainbow, cmin=1, colorbar=dict(title='Count', len=0.75), connectgaps=False, visible=True))
+        fig.add_trace(go.Surface(z=z_360, x=x_360, y=y_360, surfacecolor=z_360, colorscale=nRainbow, cmin=1, colorbar=dict(title='Count', len=0.75), connectgaps=False, visible=False))
         
-        fig.update_layout(title=None, scene=dict(xaxis_title='Phi (φ) / tau(NA) [degrees]', yaxis_title='Psi (ψ) / tau(AC) [degrees]', zaxis_title='Frequency Count (log)' if initial_log_scale else 'Frequency Count', xaxis=dict(range=[-180, 180], tickmode='linear', dtick=60), yaxis=dict(range=[-180, 180], tickmode='linear', dtick=60), zaxis_type='log' if initial_log_scale else 'linear'), width=None, height=None, margin=dict(l=65, r=50, b=65, t=90), updatemenus=[colorscale_dropdown, scale_buttons, range_buttons])
+        fig.update_layout(title=None, scene=dict(xaxis_title='Phi (φ) / tau(NA) [degrees]', yaxis_title='Psi (ψ) / tau(AC) [degrees]', zaxis_title='Frequency Count', xaxis=dict(range=[-180, 180], tickmode='linear', dtick=60), yaxis=dict(range=[-180, 180], tickmode='linear', dtick=60), zaxis_type='linear'), width=None, height=None, margin=dict(l=65, r=50, b=65, t=90), updatemenus=[colorscale_dropdown, scale_buttons, range_buttons])
         return fig
             
-    def save_interactive_html(self, colorscale: str = 'nRainbow', use_log_scale: bool = False, all_residues: Optional[List[str]] = None):
+    def save_interactive_html(self, all_residues: Optional[List[str]] = None):
         output_dir = "visualizations"
         os.makedirs(output_dir, exist_ok=True)
-        fig = self._build_figure(initial_colorscale=colorscale, initial_log_scale=use_log_scale)
-        if fig:
-            plot_div_id = "ramachandranPlot"
-            output_path = os.path.join(output_dir, f"{self.residue}_ramachandran.html")
-            
-            plot_div = fig.to_html(full_html=False, include_plotlyjs='cdn', default_height="80vh", div_id=plot_div_id)
+        
+        fig = self._build_figure()
+        if not fig: return
 
-            nav_bar_html = ""
-            if all_residues and len(all_residues) > 1:
-                buttons_html = ""
-                for res_name in sorted(all_residues):
-                    file_name = f"{res_name}_ramachandran.html"
-                    active_class = "active" if res_name == self.residue else ""
-                    buttons_html += f'<a href="{file_name}" class="residue-btn {active_class}">{res_name}</a>\n'
-                
-                nav_bar_html = f"""
-                <div class="controls-container">
-                    <h2 id="plot-title">3D Ramachandran Plot for Residue: '{self.residue}'</h2>
-                    <div class="residue-btn-wrapper">
-                        {buttons_html}
-                    </div>
+        plot_div_id = "ramachandranPlot"
+        output_path = os.path.join(output_dir, f"{self.residue}_ramachandran.html")
+        plot_div = fig.to_html(full_html=False, include_plotlyjs='cdn', default_height="80vh", div_id=plot_div_id)
+
+        nav_bar_html = ""
+        if all_residues and len(all_residues) > 1:
+            buttons_html = ""
+            for res_name in sorted(all_residues):
+                file_name = f"{res_name}_ramachandran.html"
+                active_class = "active" if res_name == self.residue else ""
+                buttons_html += f'<a href="{file_name}" class="residue-btn {active_class}">{res_name}</a>\n'
+            
+            nav_bar_html = f"""
+            <div class="controls-container">
+                <h2 id="plot-title">3D Ramachandran Plot for Residue: '{self.residue}'</h2>
+                <div class="residue-btn-wrapper">
+                    {buttons_html}
                 </div>
-                """
-            
-            colorscales_json = json.dumps(self.available_colorscales)
-            scale_args_json = json.dumps(self.scale_button_args)
-            range_args_json = json.dumps(self.range_button_args)
+            </div>
+            """
+        
+        colorscales_json = json.dumps(self.available_colorscales)
+        scale_args_json = json.dumps(self.scale_button_args)
+        range_args_json = json.dumps(self.range_button_args)
 
-            # --- START OF JAVASCRIPT CORRECTION ---
-            javascript_code = f"""
-            <script>
-                (function() {{
-                    const plotDiv = document.getElementById('{plot_div_id}');
-                    if (!plotDiv) return;
+        # --- JAVASCRIPT CORRECTION USING URL HASH ---
+        javascript_code = f"""
+        <script>
+            (function() {{
+                const plotDiv = document.getElementById('{plot_div_id}');
+                if (!plotDiv) return;
 
-                    const initializePlotInteractivity = () => {{
-                        const colorscaleMap = {colorscales_json};
-                        const scaleArgs = {scale_args_json};
-                        const rangeArgs = {range_args_json};
-                        
-                        const currentState = {{
-                            scale: 'linear', range: '180', colorscale: 'nRainbow'
-                        }};
+                const initializeInteractivity = () => {{
+                    const colorscaleMap = {colorscales_json};
+                    const scaleArgs = {scale_args_json};
+                    const rangeArgs = {range_args_json};
+                    
+                    const currentState = {{
+                        scale: 'linear', range: '180', colorscale: 'nRainbow'
+                    }};
 
-                        const updateNavLinks = () => {{
-                            const params = new URLSearchParams(currentState).toString();
-                            document.querySelectorAll('.residue-btn').forEach(a => {{
-                                const baseUrl = a.href.split('?')[0];
-                                a.href = baseUrl + '?' + params;
-                            }});
-                        }};
-
-                        const params = new URLSearchParams(window.location.search);
-                        const scale = params.get('scale');
-                        const range = params.get('range');
-                        const colorscale = params.get('colorscale');
-
-                        if (scale === 'log') {{
-                            Plotly.update(plotDiv, scaleArgs[1][0], scaleArgs[1][1]);
-                            currentState.scale = 'log';
-                        }}
-                        if (range === '360') {{
-                            Plotly.update(plotDiv, rangeArgs[1][0], rangeArgs[1][1]);
-                            currentState.range = '360';
-                        }}
-                        if (colorscale && colorscaleMap[colorscale]) {{
-                           Plotly.restyle(plotDiv, {{'colorscale': [colorscaleMap[colorscale], colorscaleMap[colorscale]]}});
-                           currentState.colorscale = colorscale;
-                        }}
-                        
-                        updateNavLinks();
-
-                        // --- FIX: Correctly parse the event data object ---
-                        plotDiv.on('plotly_update', (updateData) => {{
-                            // The 'updateData' object directly contains the layout changes
-                            if (updateData && updateData.scene && updateData.scene.zaxis && updateData.scene.zaxis.type) {{
-                                currentState.scale = updateData.scene.zaxis.type;
-                            }}
-                            if (updateData && updateData.scene && updateData.scene.xaxis && updateData.scene.xaxis.range) {{
-                                currentState.range = (updateData.scene.xaxis.range[1] > 200) ? '360' : '180';
-                            }}
-                            updateNavLinks();
-                        }});
-
-                        // This listener is specifically for trace properties like colorscale
-                        plotDiv.on('plotly_restyle', (restyleData) => {{
-                            try {{
-                                // restyleData is an array where the first element is the update object
-                                const updateObject = restyleData[0];
-                                if (updateObject && updateObject.colorscale) {{
-                                    const newColorscaleData = JSON.stringify(updateObject.colorscale[0]);
-                                    for (const name in colorscaleMap) {{
-                                        if (JSON.stringify(colorscaleMap[name]) === newColorscaleData) {{
-                                            currentState.colorscale = name;
-                                            break;
-                                        }}
-                                    }}
-                                }}
-                                updateNavLinks();
-                            }} catch(e) {{
-                                // Fails gracefully if the object structure is unexpected
-                            }}
+                    const updateNavLinks = () => {{
+                        const params = new URLSearchParams(currentState).toString();
+                        document.querySelectorAll('.residue-btn').forEach(a => {{
+                            const baseUrl = a.href.split('#')[0];
+                            a.href = baseUrl + '#' + params;
                         }});
                     }};
 
-                    plotDiv.once('plotly_afterplot', initializePlotInteractivity);
+                    // Step 1: Read URL hash and apply settings
+                    const hash = window.location.hash.substring(1);
+                    const params = new URLSearchParams(hash);
+                    const scale = params.get('scale');
+                    const range = params.get('range');
+                    const colorscale = params.get('colorscale');
 
-                }})();
-            </script>
-            """
-            # --- END OF JAVASCRIPT CORRECTION ---
+                    if (scale === 'log') {{
+                        Plotly.update(plotDiv, scaleArgs[1][0], scaleArgs[1][1]);
+                        currentState.scale = 'log';
+                    }}
+                    if (range === '360') {{
+                        Plotly.update(plotDiv, rangeArgs[1][0], rangeArgs[1][1]);
+                        currentState.range = '360';
+                    }}
+                    if (colorscale && colorscaleMap[colorscale]) {{
+                       Plotly.restyle(plotDiv, {{'colorscale': [colorscaleMap[colorscale], colorscaleMap[colorscale]]}});
+                       currentState.colorscale = colorscale;
+                    }}
+                    
+                    // Step 2: Update nav links immediately
+                    updateNavLinks();
 
-            html_template = f"""
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Ramachandran Plot: {self.residue}</title>
-                <style>
-                    body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow-x: hidden; font-family: sans-serif; }}
-                    .plot-container {{ width: 100vw; height: 80vh; }}
-                    .controls-container {{ text-align: center; padding: 15px 0; }}
-                    #plot-title {{ margin-top: 0; margin-bottom: 15px; font-size: 24px; font-weight: bold; }}
-                    .residue-btn-wrapper {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 90%; margin: auto; }}
-                    .residue-btn {{ padding: 8px 12px; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 16px; cursor: pointer; font-size: 14px; color: #333; text-decoration: none; transition: background-color 0.2s, border-color 0.2s; }}
-                    .residue-btn:hover {{ background-color: #e0e0e0; border-color: #bbb; }}
-                    .residue-btn.active {{ background-color: #d0d0d0; border-color: #999; font-weight: bold; }}
-                </style>
-            </head>
-            <body>
-                <div class="plot-container">{plot_div}</div>
-                {nav_bar_html}
-                {javascript_code}
-            </body>
-            </html>
-            """
-            
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(html_template)
+                    // Step 3: Attach listeners for new clicks
+                    plotDiv.on('plotly_update', (updateData) => {{
+                        if (updateData && updateData.scene && updateData.scene.zaxis && updateData.scene.zaxis.type) {{
+                            currentState.scale = updateData.scene.zaxis.type;
+                        }}
+                        if (updateData && updateData.scene && updateData.scene.xaxis && updateData.scene.xaxis.range) {{
+                            currentState.range = (updateData.scene.xaxis.range[1] > 200) ? '360' : '180';
+                        }}
+                        updateNavLinks();
+                    }});
 
-            if len(sys.argv) > 1 and not sys.argv[1].isdigit():
-                print(f"Successfully saved interactive plot to '{output_path}'.")
+                    plotDiv.on('plotly_restyle', (restyleData) => {{
+                        try {{
+                            const updateObject = restyleData[0];
+                            if (updateObject && updateObject.colorscale) {{
+                                const newColorscaleData = JSON.stringify(updateObject.colorscale[0]);
+                                for (const name in colorscaleMap) {{
+                                    if (JSON.stringify(colorscaleMap[name]) === newColorscaleData) {{
+                                        currentState.colorscale = name;
+                                        break;
+                                    }}
+                                }}
+                            }}
+                            updateNavLinks();
+                        }} catch(e) {{}}
+                    }});
+                }};
 
-def process_residue(residue_name: str, args, all_residues: Optional[List[str]] = None):
+                plotDiv.once('plotly_afterplot', initializeInteractivity);
+
+            }})();
+        </script>
+        """
+        # --- END JAVASCRIPT CORRECTION ---
+
+        html_template = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Ramachandran Plot: {self.residue}</title>
+            <style>
+                body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow-x: hidden; font-family: sans-serif; }}
+                .plot-container {{ width: 100vw; height: 80vh; }}
+                .controls-container {{ text-align: center; padding: 15px 0; }}
+                #plot-title {{ margin-top: 0; margin-bottom: 15px; font-size: 24px; font-weight: bold; }}
+                .residue-btn-wrapper {{ display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 90%; margin: auto; }}
+                .residue-btn {{ padding: 8px 12px; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 16px; cursor: pointer; font-size: 14px; color: #333; text-decoration: none; transition: background-color 0.2s, border-color 0.2s; }}
+                .residue-btn:hover {{ background-color: #e0e0e0; border-color: #bbb; }}
+                .residue-btn.active {{ background-color: #d0d0d0; border-color: #999; font-weight: bold; }}
+            </style>
+        </head>
+        <body>
+            <div class="plot-container">{plot_div}</div>
+            {nav_bar_html}
+            {javascript_code}
+        </body>
+        </html>
+        """
+        
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html_template)
+
+def process_residue(residue_name: str, all_residues: Optional[List[str]] = None):
     try:
         visualizer = ResidueVisualizer(residue=residue_name)
         if visualizer.df is not None and not visualizer.df.empty:
-            visualizer.save_interactive_html(colorscale=args.colorscale, use_log_scale=args.log_scale, all_residues=all_residues)
+            visualizer.save_interactive_html(all_residues=all_residues)
     except FileNotFoundError as e:
         print(e, file=sys.stderr)
     except Exception as e:
@@ -268,8 +261,6 @@ def process_residue(residue_name: str, args, all_residues: Optional[List[str]] =
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate interactive 3D Ramachandran plots for residues and save them as HTML files.", formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("target", type=str, help="A residue string (e.g. 'ALA') or a k-value (e.g. '1') for batch processing.")
-    parser.add_argument("--colorscale", type=str, default="nRainbow", help="Initial Plotly colorscale to use.")
-    parser.add_argument("--log_scale", action="store_true", help="Set the initial view to a logarithmic scale.")
     args = parser.parse_args()
 
     if args.target.isdigit():
@@ -296,9 +287,10 @@ if __name__ == "__main__":
         print(f"--- Batch Mode: Found {len(csv_files)} residues to process in '{kmer_dir}' ---")
         for filename in tqdm(csv_files, desc="Saving HTML plots"):
             residue_name = os.path.splitext(filename)[0]
-            process_residue(residue_name.upper(), args, all_residues=residue_names_for_nav)
+            process_residue(residue_name.upper(), all_residues=residue_names_for_nav)
         print(f"--- Batch processing complete. Files saved in 'visualizations/' directory. ---")
     else:
         residue = args.target.upper()
         print(f"--- Single Mode: Generating HTML plot for '{residue}' ---")
-        process_residue(residue, args, all_residues=None)
+        process_residue(residue, all_residues=None)
+
