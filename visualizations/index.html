@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ramachandran Plot Viewer</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: sans-serif; background-color: #f8f9fa;}
+        .plot-container { width: 100vw; height: 80vh; }
+        .controls-container { text-align: center; padding: 15px 0; background-color: #fff; border-bottom: 1px solid #dee2e6; }
+        #plot-title { margin-top: 0; margin-bottom: 15px; font-size: 24px; font-weight: bold; color: #343a40; }
+        #residue-select-container { margin-bottom: 15px; }
+        #residue-select { padding: 8px 12px; font-size: 16px; border-radius: 5px; }
+        .residue-btn-wrapper { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 90%; margin: auto; }
+        .residue-btn { padding: 8px 12px; border: 1px solid #ccc; background-color: #f0f0f0; border-radius: 16px; cursor: pointer; font-size: 14px; color: #333; text-decoration: none; transition: all 0.2s; }
+        .residue-btn:hover { background-color: #e0e0e0; border-color: #bbb; transform: translateY(-2px); }
+        .residue-btn.active { background-color: #007bff; border-color: #007bff; color: white; font-weight: bold; }
+        #plotDiv p { padding: 2em; font-size: 1.2em; color: #6c757d; }
+    </style>
+</head>
+<body>
+    <div id="controls-and-nav-container"></div>
+    <div class="plot-container" id="plotDiv"><p>Loading residue data...</p></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const plotDiv = document.getElementById('plotDiv');
+            const navContainer = document.getElementById('controls-and-nav-container');
+
+            let manifest = [];
+            let currentPlotData = null;
+            const currentState = { residue: null, range: '180', colorscale: 'nRainbow', scale: 'linear' };
+            
+            // --- Colorscale Definitions (from original Python script) ---
+            const nRainbow = [[0.0,'rgb(0,0,200)'],[0.125,'rgb(0,25,255)'],[0.25,'rgb(0,152,255)'],[0.375,'rgb(44,255,150)'],[0.5,'rgb(151,255,0)'],[0.625,'rgb(255,234,0)'],[0.75,'rgb(255,111,0)'],[0.875,'rgb(255,0,0)'],[1.0,'rgb(0,0,0)']];
+            const availableColorscales = {
+                'nRainbow': nRainbow,
+                'Magma': [[0.0, '#000004'], [0.1111111111111111, '#180f3d'], [0.2222222222222222, '#440f76'], [0.3333333333333333, '#721f81'], [0.4444444444444444, '#9e2f7f'], [0.5555555555555556, '#cd4071'], [0.6666666666666666, '#f1605d'], [0.7777777777777778, '#fd9567'], [0.8888888888888888, '#feca8d'], [1.0, '#fcfdbf']],
+                'Magma_Reverse': [[0.0, '#fcfdbf'], [0.1111111111111111, '#feca8d'], [0.2222222222222222, '#fd9567'], [0.3333333333333333, '#f1605d'], [0.4444444444444444, '#cd4071'], [0.5555555555555556, '#9e2f7f'], [0.6666666666666666, '#721f81'], [0.7777777777777778, '#440f76'], [0.8888888888888888, '#180f3d'], [1.0, '#000004']],
+                'Viridis': [[0.0, '#440154'], [0.1111111111111111, '#482878'], [0.2222222222222222, '#3e4989'], [0.3333333333333333, '#31688e'], [0.4444444444444444, '#26828e'], [0.5555555555555556, '#1f9e89'], [0.6666666666666666, '#35b779'], [0.7777777777777778, '#6ece58'], [0.8888888888888888, '#b5de2b'], [1.0, '#fde725']]
+            };
+
+            function drawPlot() {
+                if (!currentPlotData) return;
+
+                const data = [
+                    {
+                        type: 'surface', visible: true, name: '180',
+                        z: currentPlotData.z_180, x: currentPlotData.x_180, y: currentPlotData.y_180,
+                        surfacecolor: currentState.scale === 'linear' ? currentPlotData.z_180 : currentPlotData.log_z_180,
+                        colorscale: availableColorscales[currentState.colorscale], cmin: 1,
+                        colorbar: { title: 'Count' }, connectgaps: false
+                    },
+                    {
+                        type: 'surface', visible: false, name: '360',
+                        z: currentPlotData.z_360, x: currentPlotData.x_360, y: currentPlotData.y_360,
+                        surfacecolor: currentState.scale === 'linear' ? currentPlotData.z_360 : currentPlotData.log_z_360,
+                        colorscale: availableColorscales[currentState.colorscale], cmin: 1,
+                        colorbar: { title: 'Count' }, connectgaps: false
+                    }
+                ];
+
+                const colorscaleButtons = Object.keys(availableColorscales).map(name => ({
+                    label: name.replace('_', ' '), method: 'restyle',
+                    args: [{'colorscale': [availableColorscales[name], availableColorscales[name]]}]
+                }));
+                
+                const scaleButtonArgs = [
+                    [{"surfacecolor": [currentPlotData.z_180, currentPlotData.z_360]}, {"scene.zaxis.type": "linear", "scene.zaxis.title": "Frequency Count"}],
+                    [{"surfacecolor": [currentPlotData.log_z_180, currentPlotData.log_z_360]}, {"scene.zaxis.type": "log", "scene.zaxis.title": "Frequency Count (log)"}]
+                ];
+
+                const layout = {
+                    title: null,
+                    scene: {
+                        xaxis: { title: 'Phi (φ) / tau(NA) [degrees]', range: currentState.range === '180' ? [-180, 180] : [0, 360], tickmode: 'linear', dtick: 60 },
+                        yaxis: { title: 'Psi (ψ) / tau(AC) [degrees]', range: currentState.range === '180' ? [-180, 180] : [0, 360], tickmode: 'linear', dtick: 60 },
+                        zaxis: { title: `Frequency Count${currentState.scale === 'log' ? ' (log)' : ''}`, type: currentState.scale }
+                    },
+                    margin: { l: 65, r: 50, b: 65, t: 90 },
+                    updatemenus: [
+                        { buttons: colorscaleButtons, direction: "down", pad: {"r": 10, "t": 10}, showactive: true, x: 0.05, xanchor: "left", y: 1.1, yanchor: "top" },
+                        { type: "buttons", direction: "left", pad: {"r": 10, "t": 10}, showactive: true, x: 0.35, xanchor: "left", y: 1.1, yanchor: "top",
+                          buttons: [ { label: "Linear", method: "update", args: scaleButtonArgs[0] }, { label: "Log", method: "update", args: scaleButtonArgs[1] } ] },
+                        { type: "buttons", direction: "left", pad: {"r": 10, "t": 10}, showactive: true, x: 0.65, xanchor: "left", y: 1.1, yanchor: "top",
+                          buttons: [
+                              { label: "-180° to 180°", method: "update", args: [{"visible": [true, false]}, {"scene.xaxis.range": [-180, 180], "scene.yaxis.range": [-180, 180]}] },
+                              { label: "0° to 360°", method: "update", args: [{"visible": [false, true]}, {"scene.xaxis.range": [0, 360], "scene.yaxis.range": [0, 360]}] }
+                          ]
+                        }
+                    ]
+                };
+
+                Plotly.newPlot(plotDiv, data, layout).then(attachEventListeners);
+            }
+            
+            function attachEventListeners() {
+                const updateUrlHash = () => {
+                    const params = new URLSearchParams(currentState).toString();
+                    window.history.replaceState(null, '', '#' + params);
+                };
+
+                plotDiv.on('plotly_update', () => {
+                    const scene = plotDiv.layout.scene;
+                    if(scene) {
+                        currentState.range = (scene.xaxis.range[1] > 200) ? '360' : '180';
+                        currentState.scale = scene.zaxis.type;
+                    }
+                    updateUrlHash();
+                });
+                plotDiv.on('plotly_restyle', (restyleData) => {
+                    if (restyleData && restyleData[0] && restyleData[0].colorscale) {
+                        const newCs = JSON.stringify(restyleData[0].colorscale[0]);
+                        for (const name in availableColorscales) {
+                            if (JSON.stringify(availableColorscales[name]) === newCs) {
+                                currentState.colorscale = name;
+                                break;
+                            }
+                        }
+                    }
+                    updateUrlHash();
+                });
+            }
+
+            function buildNavUI() {
+                const select = document.createElement('select');
+                select.id = 'residue-select';
+                manifest.forEach(res => {
+                    const option = document.createElement('option');
+                    option.value = res;
+                    option.textContent = res;
+                    if(res === currentState.residue) option.selected = true;
+                    select.appendChild(option);
+                });
+                select.addEventListener('change', (e) => loadResidue(e.target.value));
+                
+                navContainer.innerHTML = `
+                    <div class="controls-container">
+                        <h2 id="plot-title">3D Ramachandran Plot for Residue: 
+                            <span id="residue-select-container"></span>
+                        </h2>
+                    </div>
+                `;
+                document.getElementById('residue-select-container').appendChild(select);
+            }
+
+            async function loadResidue(residueName) {
+                currentState.residue = residueName;
+                plotDiv.innerHTML = `<p>Loading data for ${residueName}...</p>`;
+                
+                try {
+                    const response = await fetch(`./data/${residueName}.json`);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    currentPlotData = await response.json();
+                    buildNavUI();
+                    drawPlot();
+                } catch (error) {
+                    plotDiv.innerHTML = `<p style="color: #d9534f;">Error: Could not load data for ${residueName}.</p>`;
+                }
+            }
+            
+            try {
+                const response = await fetch('./manifest.json');
+                manifest = await response.json();
+                
+                const hashParams = new URLSearchParams(window.location.hash.substring(1));
+                const initialResidue = hashParams.get('residue') || (manifest.length > 0 ? manifest[0] : null);
+
+                if (initialResidue) {
+                    await loadResidue(initialResidue);
+                    
+                    currentState.scale = hashParams.get('scale') || 'linear';
+                    currentState.range = hashParams.get('range') || '180';
+                    currentState.colorscale = hashParams.get('colorscale') || 'nRainbow';
+                    
+                    // Re-draw with the correct state from the URL hash
+                    drawPlot();
+                } else {
+                     plotDiv.innerHTML = `<p>No residues found.</p>`;
+                     navContainer.innerHTML = `<div class="controls-container"><h2 id="plot-title">3D Ramachandran Plot</h2></div>`;
+                }
+            } catch (error) {
+                plotDiv.innerHTML = `<p style="color: #d9534f;">Error: Could not load residue manifest file.</p>`;
+            }
+        });
+    </script>
+</body>
+</html>
