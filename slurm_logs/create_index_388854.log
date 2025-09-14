@@ -1,0 +1,8 @@
+=== JOB START: CREATING DATABASE INDEX ===
+Activating Conda environment: kmers
+Executing script: create_index.py
+Connecting to the database at '/users/sggnewto/fastscratch/protein_geometry_invariants.db'...
+Creating index 'idx_chain_position' on table 'invariants'...
+Index 'idx_chain_position' already exists. No action taken.
+Database connection closed.
+=== JOB COMPLETE ===

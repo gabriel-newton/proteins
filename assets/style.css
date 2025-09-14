@@ -1,0 +1,33 @@
+/* File: assets/style.css */
+html, body, #_dash-root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.app-container {
+    display: flex;
+    height: 100%;
+    font-family: sans-serif;
+}
+
+.sidebar {
+    width: 300px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-right: 1px solid #dee2e6;
+    overflow-y: auto;
+}
+
+.main-content {
+    flex: 1;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#ramachandran-plot {
+    flex: 1;
+    min-height: 0;
+}
