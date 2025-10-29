@@ -1,0 +1,411 @@
+import json
+import plotly.io as pio
+from dash import dcc, html, Input, Output, State, no_update, ctx, ALL, MATCH
+import dash_bootstrap_components as dbc
+from .rendering import create_3D_figure, create_1D_histo_figure, build_full_stats_table
+from constants import (
+    INVARIANT_SHORTHAND, TORSION_INVARIANTS, INVARIANT_ORDER, NON_TORSION_INVARIANTS
+)
+import io
+import csv
+
+# --- HELPER: create_stats_csv ---
+def create_stats_csv(panel_state: dict) -> str:
+    """Converts the full_v7_stats dictionary to a CSV string."""
+    stats_data = panel_state.get('full_v7_stats')
+    if not stats_data:
+        return ""
+    
+    # Get invariant labels
+    inv1 = panel_state.get('inv1', 'X')
+    inv2 = panel_state.get('inv2', 'Y')
+    inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1)
+    inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2)
+
+    # Define a clean order and friendly names for keys
+    stat_order = [
+        ('population', 'Population'),
+        ('mean_x', f'Mean ({inv1_label})'),
+        ('mean_y', f'Mean ({inv2_label})'),
+        ('variance_x', f'Variance ({inv1_label})'),
+        ('variance_y', f'Variance ({inv2_label})'),
+        ('freq_at_mean_x', f'Freq. at Mean ({inv1_label})'),
+        ('freq_at_mean_y', f'Freq. at Mean ({inv2_label})'),
+        ('median_x', f'Median ({inv1_label})'),
+        ('median_y', f'Median ({inv2_label})'),
+        ('min_x', f'Min ({inv1_label})'),
+        ('min_y', f'Min ({inv2_label})'),
+        ('max_x', f'Max ({inv1_label})'),
+        ('max_y', f'Max ({inv2_label})'),
+        ('covariance', 'Covariance'),
+        ('pearson_correlation', "Pearson's (ρ)"),
+        ('peak_x', f'Peak ({inv1_label})'),
+        ('peak_y', f'Peak ({inv2_label})'),
+        ('peak_freq', 'Peak Frequency'),
+    ]
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Statistic', 'Value'])
+    
+    for key, friendly_name in stat_order:
+        value = stats_data.get(key)
+        if value is None:
+            value_str = "N/A"
+        elif isinstance(value, float):
+            if abs(value) > 1e-3 or value == 0:
+                value_str = f"{value:.4f}"
+            else:
+                value_str = f"{value:.4e}"
+        else:
+            value_str = str(value)
+        writer.writerow([friendly_name, value_str])
+        
+    return output.getvalue()
+
+
+def register_interaction_callbacks(app):
+
+    @app.callback(
+        Output('xaxis-limit-label', 'children'),
+        Output('yaxis-limit-label', 'children'),
+        Input('inv1-dropdown', 'value'),
+        Input('inv2-dropdown', 'value')
+    )
+    def update_axis_labels(inv1, inv2):
+        inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
+        xaxis_text = f"{inv1_label}-axis limits"; yaxis_text = f"{inv2_label}-axis limits";
+        return xaxis_text, yaxis_text
+
+    @app.callback(
+        Output('active-panel-store', 'data'), Output('active-panel-display', 'children'),
+        Output('inv1-dropdown', 'value'), Output('inv2-dropdown', 'value'),
+        Output('offset-dropdown', 'value'), Output('res1-dropdown', 'value'),
+        Output('res2-dropdown', 'value'), Output('xaxis-min-input', 'value'),
+        Output('xaxis-max-input', 'value'), Output('yaxis-min-input', 'value'),
+        Output('yaxis-max-input', 'value'),
+        # --- ADDED: sync scale/colormap to active panel ---
+        Output('scale-switch', 'value'),
+        Output('colormap-dropdown', 'value'),
+        # --- END ADDED ---
+        Input({'type': 'config-button', 'index': ALL}, 'n_clicks'),
+        Input({'type': 'placeholder-button', 'index': ALL}, 'n_clicks'),
+        State('panel-states-store', 'data'), prevent_initial_call=True
+    )
+    def update_active_panel(config_clicks, placeholder_clicks, panel_states_json):
+        triggered_id_dict = ctx.triggered_id;
+        if not triggered_id_dict:
+            config_triggered = any(c is not None for c in config_clicks); placeholder_triggered = any(p is not None for p in placeholder_clicks);
+            if not config_triggered and not placeholder_triggered: 
+                # Default state for Panel 0
+                return 0, "Configure Panel 1", 'tau_NA', 'tau_AC', 0, 'Any', 'Any', None, None, None, None, True, 'Custom Rainbow'
+            else: return no_update;
+        try:
+            if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict: active_panel_index = triggered_id_dict['index'];
+            elif isinstance(triggered_id_dict, dict) and 'prop_id' in triggered_id_dict: prop_id_str = triggered_id_dict['prop_id'].split('.')[0]; parsed_id = json.loads(prop_id_str.replace("'", '"')); active_panel_index = parsed_id['index'];
+            else: print(f"Unexpected triggered_id format: {triggered_id_dict}"); return no_update;
+        except Exception as e: print(f"Error parsing triggered_id: {triggered_id_dict} - {e}"); return no_update;
+        
+        panel_states = json.loads(panel_states_json or '{}'); 
+        state = panel_states.get(str(active_panel_index));
+        
+        # Load state or set defaults if no state exists
+        inv1 = state.get('inv1', 'tau_NA') if state else 'tau_NA'; 
+        inv2 = state.get('inv2', 'tau_AC') if state else 'tau_AC';
+        offset = state.get('offset', 0) if state else 0; 
+        res1 = state.get('res1', 'Any') if state else 'Any'; 
+        res2 = state.get('res2', 'Any') if state else 'Any';
+        x_lims = state.get('x_lims', [None, None]) if state else [None, None]; 
+        y_lims = state.get('y_lims', [None, None]) if state else [None, None];
+        log_scale = state.get('log_scale', True) if state else True
+        colormap = state.get('colormap', 'Custom Rainbow') if state else 'Custom Rainbow'
+
+        return (
+            active_panel_index, f"Configure Panel {active_panel_index + 1}", 
+            inv1, inv2, offset, res1, res2, 
+            x_lims[0], x_lims[1], y_lims[0], y_lims[1],
+            log_scale, colormap
+        );
+
+    # --- NEW: Callback to manage dynamic UI controls ---
+    @app.callback(
+        Output('res2-container', 'style'),
+        Output('visual-options-container', 'style'),
+        Output('xaxis-limit-container', 'style'),
+        Output('yaxis-limit-container', 'style'),
+        Output('colormap-container', 'style'),
+        Output('scale-switch-container', 'style'),
+        Output('inv1-dropdown', 'options'),
+        Output('inv2-dropdown', 'options'),
+        Input('offset-dropdown', 'value'),
+        Input('inv1-dropdown', 'value'),
+        Input('inv2-dropdown', 'value')
+    )
+    def manage_dynamic_controls(offset, inv1, inv2):
+        # 1. Get plot type
+        inv1_type = 'TORSION' if inv1 in TORSION_INVARIANTS else 'NON_TORSION'
+        inv2_type = 'TORSION' if inv2 in TORSION_INVARIANTS else 'NON_TORSION'
+        
+        plot_type = 'STATS_ONLY' # Default
+        if inv1_type == 'TORSION' and inv2_type == 'TORSION':
+            plot_type = '3D_HEATMAP'
+        elif inv1_type == 'TORSION' or inv2_type == 'TORSION':
+            plot_type = '1D_HISTO'
+            
+        # 2. Handle Offset 0 (Residue 2 and Invariant filtering)
+        hide_style = {'display': 'none'}
+        show_style = {'display': 'block'}
+        
+        res2_style = show_style
+        inv1_options = [{'label': INVARIANT_SHORTHAND.get(i, i), 'value': i} for i in INVARIANT_ORDER]
+        inv2_options = inv1_options.copy()
+
+        if offset == 0:
+            res2_style = hide_style # Hide Residue 2
+            
+            # Filter invariant dropdowns to prevent X vs X
+            if inv1:
+                inv2_options = [opt for opt in inv2_options if opt['value'] != inv1]
+            if inv2:
+                inv1_options = [opt for opt in inv1_options if opt['value'] != inv2]
+        
+        # 3. Handle Visual Options visibility
+        if plot_type == 'STATS_ONLY':
+            # Hide all visual options
+            return res2_style, hide_style, no_update, no_update, no_update, no_update, inv1_options, inv2_options
+        
+        elif plot_type == '1D_HISTO':
+            # Show X-axis and Scale, hide Y-axis and Colormap
+            x_style = show_style
+            y_style = hide_style
+            map_style = hide_style
+            scale_style = show_style
+            
+            # 1D Histo only plots on one axis. inv1 or inv2?
+            # Based on v7, the TORSION is the one that gets plotted.
+            if inv2_type == 'TORSION': # Y-axis is the histo
+                x_style, y_style = y_style, x_style # Swap visibility
+            
+            return res2_style, show_style, x_style, y_style, map_style, scale_style, inv1_options, inv2_options
+
+        elif plot_type == '3D_HEATMAP':
+            # Show all
+            return res2_style, show_style, show_style, show_style, show_style, show_style, inv1_options, inv2_options
+
+        # Default fallback
+        return res2_style, show_style, show_style, show_style, show_style, show_style, inv1_options, inv2_options
+    # --- END NEW ---
+
+    # --- NEW: Callback to set default axis limits ---
+    @app.callback(
+        Output('xaxis-min-input', 'value', allow_duplicate=True),
+        Output('xaxis-max-input', 'value', allow_duplicate=True),
+        Output('yaxis-min-input', 'value', allow_duplicate=True),
+        Output('yaxis-max-input', 'value', allow_duplicate=True),
+        Input('inv1-dropdown', 'value'),
+        Input('inv2-dropdown', 'value'),
+        prevent_initial_call=True
+    )
+    def set_default_axis_limits(inv1, inv2):
+        # { inv: [min, max], ... }
+        defaults = {
+            'tau_NA': [0, 360],    # phi
+            'tau_AC': [-90, 270],  # psi
+            'tau_CN': [-90, 270],  # omega
+        }
+        
+        x_min, x_max = defaults.get(inv1, [no_update, no_update])
+        y_min, y_max = defaults.get(inv2, [no_update, no_update])
+        
+        return x_min, x_max, y_min, y_max
+    # --- END NEW ---
+
+    @app.callback(
+        Output('confirm-clear-modal', 'is_open'), Output('last-clicked-panel-store', 'data'),
+        Input({'type': 'clear-button', 'index': ALL}, 'n_clicks'),
+        State('confirm-clear-modal', 'is_open'), prevent_initial_call=True
+    )
+    def open_clear_modal(clear_clicks, is_open):
+        triggered_id_dict = ctx.triggered_id;
+        if not triggered_id_dict or is_open or not any(c for c in clear_clicks if c is not None): return no_update, no_update;
+        try:
+            if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict: panel_index = triggered_id_dict['index'];
+            elif isinstance(triggered_id_dict, dict) and 'prop_id' in triggered_id_dict: prop_id_str = triggered_id_dict['prop_id'].split('.')[0]; parsed_id = json.loads(prop_id_str.replace("'", '"')); panel_index = parsed_id['index'];
+            else: return no_update, no_update;
+            return True, panel_index;
+        except Exception as e: print(f"Error parsing clear triggered_id: {triggered_id_dict} - {e}"); return no_update, no_update;
+
+    @app.callback(
+        Output('panel-states-store', 'data', allow_duplicate=True), Output('confirm-clear-modal', 'is_open', allow_duplicate=True),
+        Output('status-message-store', 'data', allow_duplicate=True),
+        Input('confirm-clear-button', 'n_clicks'), Input('cancel-clear-button', 'n_clicks'),
+        State('last-clicked-panel-store', 'data'), State('panel-states-store', 'data'),
+        prevent_initial_call=True
+    )
+    def handle_clear_confirmation(confirm_clicks, cancel_clicks, panel_index, panel_states_json):
+        button_id = ctx.triggered_id;
+        if not button_id or panel_index is None: return no_update, no_update, no_update;
+        panel_states = json.loads(panel_states_json or '{}');
+        if button_id == 'confirm-clear-button':
+            if str(panel_index) in panel_states: del panel_states[str(panel_index)]; return json.dumps(panel_states), False, f"Panel {panel_index + 1} cleared.";
+        return no_update, False, no_update;
+
+    @app.callback(
+        Output('panel-states-store', 'data', allow_duplicate=True),
+        Input({'type': 'toggle-view-button', 'index': ALL}, 'n_clicks'),
+        State('panel-states-store', 'data'),
+        prevent_initial_call=True
+    )
+    def toggle_panel_view(toggle_clicks, panel_states_json):
+        triggered_id_dict = ctx.triggered_id
+        if not triggered_id_dict or not any(c for c in toggle_clicks if c is not None):
+            return no_update
+
+        try:
+            if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict:
+                panel_index = triggered_id_dict['index']
+            elif isinstance(triggered_id_dict, dict) and 'prop_id' in triggered_id_dict:
+                prop_id_str = triggered_id_dict['prop_id'].split('.')[0]
+                parsed_id = json.loads(prop_id_str.replace("'", '"'))
+                panel_index = parsed_id['index']
+            else:
+                return no_update
+        except Exception as e:
+            print(f"Error parsing toggle triggered_id: {triggered_id_dict} - {e}")
+            return no_update
+        
+        panel_states = json.loads(panel_states_json or '{}')
+        state = panel_states.get(str(panel_index))
+        
+        if not state or 'view' not in state:
+            return no_update
+            
+        if state['view'] == 'graph':
+            state['view'] = 'stats'
+        else:
+            state['view'] = 'graph'
+            
+        panel_states[str(panel_index)] = state
+        return json.dumps(panel_states)
+
+    @app.callback(
+        Output('focus-modal', 'is_open'), Output('focus-modal-header-title', 'children'),
+        Output('focus-modal-body', 'children'), Output('last-clicked-panel-store', 'data', allow_duplicate=True),
+        Input({'type': 'focus-button', 'index': ALL}, 'n_clicks'),
+        State('panel-states-store', 'data'),
+        prevent_initial_call=True
+    )
+    def open_focus_modal(focus_clicks, panel_states_json):
+        triggered_id_dict = ctx.triggered_id;
+        if not triggered_id_dict or not any(c for c in focus_clicks if c is not None): 
+            return no_update, no_update, no_update, no_update;
+        
+        try:
+            if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict: panel_index = triggered_id_dict['index'];
+            elif isinstance(triggered_id_dict, dict) and 'prop_id' in triggered_id_dict: prop_id_str = triggered_id_dict['prop_id'].split('.')[0]; parsed_id = json.loads(prop_id_str.replace("'", '"')); panel_index = parsed_id['index'];
+            else: return no_update, no_update, no_update, no_update;
+        except Exception as e: print(f"Error parsing focus triggered_id: {triggered_id_dict} - {e}"); return no_update, no_update, no_update, no_update;
+
+        panel_states = json.loads(panel_states_json or '{}'); state = panel_states.get(str(panel_index));
+        if not state: return no_update, no_update, no_update, no_update
+        
+        job_type = state.get('job_type'); modal_title = state.get('title', 'Focus View');
+        current_view = state.get('view')
+        
+        # --- Get panel-specific scale/colormap ---
+        log_scale = state.get('log_scale', True)
+        colormap = state.get('colormap', 'Custom Rainbow')
+        
+        try:
+            if current_view == 'graph':
+                fig = None;
+                if job_type == '3D_HEATMAP': 
+                    fig = create_3D_figure(state.get('figure_data',{}), '', state.get('uirevision_key',''), log_scale, colormap, state.get('inv1'), state.get('inv2'), state.get('x_lims'), state.get('y_lims'));
+                elif job_type == '1D_HISTO_VS_STATS': 
+                    fig = create_1D_histo_figure(state.get('figure_data_histo',{}), '', state.get('inv1'), log_scale);
+                elif job_type == '1D_STATS_VS_HISTO': 
+                    fig = create_1D_histo_figure(state.get('figure_data_histo',{}), '', state.get('inv2'), log_scale);
+                
+                if not fig: return no_update, no_update, no_update, no_update;
+                modal_body_content = dcc.Graph(figure=fig, style={'height': '100%'});
+                return True, modal_title, modal_body_content, panel_index;
+
+            elif current_view == 'stats' or job_type == '1D_STATS_VS_STATS':
+                stats_table = build_full_stats_table(state)
+                modal_body_content = stats_table
+                return True, modal_title, modal_body_content, panel_index;
+
+            return no_update, no_update, no_update, no_update;
+        except Exception as e: 
+            print(f"Error creating focus figure or content: {e}"); import traceback; traceback.print_exc(); 
+            return True, modal_title, dbc.Alert(f"Error generating focus view: {e}", color="danger"), panel_index;
+
+    @app.callback(
+        Output('status-indicator', 'children'), Output('status-indicator', 'style'),
+        Output('status-clear-interval', 'disabled'), Input('status-message-store', 'data'),
+        State('status-indicator', 'style')
+    )
+    def update_status_indicator(message, style):
+        if not message: style['opacity'] = 0; return "", style, True;
+        style['opacity'] = 1; return message, style, False;
+
+    @app.callback(
+        Output('status-message-store', 'data', allow_duplicate=True),
+        Input('status-clear-interval', 'n_intervals'), prevent_initial_call=True
+    )
+    def clear_status_message(n_intervals): return "";
+
+    @app.callback(
+        Output("download-html", "data"), 
+        Input({'type': 'download-button', 'index': ALL}, 'n_clicks'),
+        State('panel-states-store', 'data'),
+        prevent_initial_call=True
+    )
+    def download_graph_html(download_clicks, panel_states_json):
+        triggered_id_dict = ctx.triggered_id;
+        if not triggered_id_dict or not any(c for c in download_clicks if c is not None): 
+            return no_update;
+        
+        try:
+            if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict: panel_index = triggered_id_dict['index'];
+            elif isinstance(triggered_id_dict, dict) and 'prop_id' in triggered_id_dict: prop_id_str = triggered_id_dict['prop_id'].split('.')[0]; parsed_id = json.loads(prop_id_str.replace("'", '"')); panel_index = parsed_id['index'];
+            else: return no_update;
+        except Exception as e: print(f"Error parsing download triggered_id: {triggered_id_dict} - {e}"); return no_update;
+        
+        panel_states = json.loads(panel_states_json or '{}'); state = panel_states.get(str(panel_index));
+        if not state: return no_update
+        
+        job_type = state.get('job_type');
+        current_view = state.get('view')
+        title_str = state.get('title', 'panel_data').replace(' ', '_').replace('+', '').replace('(', '').replace(')', '').replace(':', '')
+
+        # --- Get panel-specific scale/colormap ---
+        log_scale = state.get('log_scale', True)
+        colormap = state.get('colormap', 'Custom Rainbow')
+
+        try:
+            if current_view == 'graph':
+                fig = None;
+                if job_type == '3D_HEATMAP': 
+                    fig = create_3D_figure(state.get('figure_data',{}), state.get('title', ''), state.get('uirevision_key',''), log_scale, colormap, state.get('inv1'), state.get('inv2'), state.get('x_lims'), state.get('y_lims'));
+                elif job_type == '1D_HISTO_VS_STATS': 
+                    fig = create_1D_histo_figure(state.get('figure_data_histo',{}), state.get('title', ''), state.get('inv1'), log_scale);
+                elif job_type == '1D_STATS_VS_HISTO': 
+                    fig = create_1D_histo_figure(state.get('figure_data_histo',{}), state.get('title', ''), state.get('inv2'), log_scale);
+                
+                if fig:
+                    filename = f"{title_str}_graph.html";
+                    return dict(content=pio.to_html(fig, full_html=True), filename=filename);
+            
+            elif current_view == 'stats' or job_type == '1D_STATS_VS_STATS':
+                if not state.get('full_v7_stats'): return no_update
+                
+                csv_string = create_stats_csv(state) 
+                filename = f"{title_str}_stats.csv";
+                return dict(content=csv_string, filename=filename, type="text/csv", base64=False)
+
+            return no_update;
+        except Exception as e: 
+            print(f"Error creating download file: {e}"); 
+            import traceback; traceback.print_exc()
+            return no_update;
