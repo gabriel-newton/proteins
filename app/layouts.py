@@ -10,14 +10,13 @@ def build_config_panel():
     return html.Div(
         className="left-panel",
         children=[
-            html.H3("Protein Plot Panel", className="app-title"), # <-- CHANGED
+            html.H3("Protein Plot Panel", className="app-title"),
             html.Hr(),
             html.H4("Configure Panel", id="active-panel-display"),
 
-            # --- MOVED TO TOP ---
             dbc.Label("Residue Offset"),
             dcc.Dropdown(id='offset-dropdown', options=[{'label': f'+{i}', 'value': i} for i in range(5)], value=0),
-            # --- END MOVE ---
+
 
             dbc.Label("Invariant 1 (X-axis)", className="mt-3"),
             dcc.Dropdown(id='inv1-dropdown', options=[{'label': INVARIANT_SHORTHAND.get(i, i), 'value': i} for i in INVARIANT_ORDER], value='tau_NA'),
@@ -27,44 +26,36 @@ def build_config_panel():
             dbc.Label("Residue 1", className="mt-3"),
             dcc.Dropdown(id='res1-dropdown', options=[{'label': res, 'value': res} for res in RESIDUE_CONTEXTS], value='Any'),
 
-            # --- WRAPPED IN CONTAINER ---
             html.Div(id='res2-container', children=[
                 dbc.Label("Residue 2", className="mt-3"),
                 dcc.Dropdown(id='res2-dropdown', options=[{'label': res, 'value': res} for res in RESIDUE_CONTEXTS], value='Any'),
             ]),
-            # --- END WRAPPER ---
 
             html.Hr(),
 
-            # --- WRAPPED IN CONTAINER ---
             html.Div(id='visual-options-container', children=[
                 html.H5("Visual Options"),
                 
-                # --- WRAPPED ---
                 html.Div(id='scale-switch-container', children=[
                     dbc.Label("Scale"),
                     dbc.Switch(id='scale-switch', label="Log / Linear", value=True),
                 ]),
                 
-                # --- WRAPPED ---
                 html.Div(id='colormap-container', children=[
                     dbc.Label("Colormap", className="mt-2"),
                     dcc.Dropdown(id='colormap-dropdown', options=[{'label': cs, 'value': cs} for cs in PLOTLY_COLORSCALES], value='Custom Rainbow'),
                 ]),
                 
-                # --- WRAPPED ---
                 html.Div(id='xaxis-limit-container', children=[
                     dbc.Label("X-axis limits", id='xaxis-limit-label', className="mt-3"),
                     dbc.Row([dbc.Col(dbc.Input(id='xaxis-min-input', type='number', placeholder='Min')), dbc.Col(dbc.Input(id='xaxis-max-input', type='number', placeholder='Max')),]),
                 ]),
                 
-                # --- WRAPPED ---
                 html.Div(id='yaxis-limit-container', children=[
                     dbc.Label("Y-axis limits", id='yaxis-limit-label', className="mt-2"),
                     dbc.Row([dbc.Col(dbc.Input(id='yaxis-min-input', type='number', placeholder='Min')), dbc.Col(dbc.Input(id='yaxis-max-input', type='number', placeholder='Max')),]),
                 ]),
             ]),
-            # --- END WRAPPER ---
 
             dbc.Button("Generate Graph", id="generate-graph-button", color="primary", className="w-100 mt-4")
         ]
@@ -80,7 +71,7 @@ def main_layout():
             dcc.Store(id='panel-states-store', storage_type='session'),
             dcc.Store(id='active-panel-store', data=0, storage_type='session'),
             dcc.Store(id='last-clicked-panel-store'),
-            dcc.Store(id='graph-job-store'), # Retained
+            dcc.Store(id='graph-job-store'),
             dcc.Store(id='status-message-store'),
 
             dbc.Row(
@@ -98,7 +89,6 @@ def main_layout():
         ]
     )
 
-    # --- UPDATED: Focus Modal Header (Button Removed) ---
     focus_modal = dbc.Modal([
         dbc.ModalHeader(
             id="focus-modal-header-title",
@@ -106,7 +96,6 @@ def main_layout():
         ),
         dbc.ModalBody(id="focus-modal-body", style={'height': '85vh'})
     ], id="focus-modal", fullscreen=True, scrollable=True)
-    # --- END UPDATED ---
 
     confirm_clear_modal = dbc.Modal([
         dbc.ModalHeader(dbc.ModalTitle("Confirm Clear")),

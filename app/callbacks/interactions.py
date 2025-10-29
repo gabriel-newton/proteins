@@ -9,20 +9,17 @@ from constants import (
 import io
 import csv
 
-# --- HELPER: create_stats_csv ---
 def create_stats_csv(panel_state: dict) -> str:
     """Converts the full_v7_stats dictionary to a CSV string."""
     stats_data = panel_state.get('full_v7_stats')
     if not stats_data:
         return ""
     
-    # Get invariant labels
     inv1 = panel_state.get('inv1', 'X')
     inv2 = panel_state.get('inv2', 'Y')
     inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1)
     inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2)
 
-    # Define a clean order and friendly names for keys
     stat_order = [
         ('population', 'Population'),
         ('mean_x', f'Mean ({inv1_label})'),
@@ -84,10 +81,8 @@ def register_interaction_callbacks(app):
         Output('res2-dropdown', 'value'), Output('xaxis-min-input', 'value'),
         Output('xaxis-max-input', 'value'), Output('yaxis-min-input', 'value'),
         Output('yaxis-max-input', 'value'),
-        # --- ADDED: sync scale/colormap to active panel ---
         Output('scale-switch', 'value'),
         Output('colormap-dropdown', 'value'),
-        # --- END ADDED ---
         Input({'type': 'config-button', 'index': ALL}, 'n_clicks'),
         Input({'type': 'placeholder-button', 'index': ALL}, 'n_clicks'),
         State('panel-states-store', 'data'), prevent_initial_call=True
@@ -97,7 +92,6 @@ def register_interaction_callbacks(app):
         if not triggered_id_dict:
             config_triggered = any(c is not None for c in config_clicks); placeholder_triggered = any(p is not None for p in placeholder_clicks);
             if not config_triggered and not placeholder_triggered: 
-                # Default state for Panel 0
                 return 0, "Configure Panel 1", 'tau_NA', 'tau_AC', 0, 'Any', 'Any', None, None, None, None, True, 'Custom Rainbow'
             else: return no_update;
         try:
@@ -109,7 +103,6 @@ def register_interaction_callbacks(app):
         panel_states = json.loads(panel_states_json or '{}'); 
         state = panel_states.get(str(active_panel_index));
         
-        # Load state or set defaults if no state exists
         inv1 = state.get('inv1', 'tau_NA') if state else 'tau_NA'; 
         inv2 = state.get('inv2', 'tau_AC') if state else 'tau_AC';
         offset = state.get('offset', 0) if state else 0; 
@@ -127,7 +120,6 @@ def register_interaction_callbacks(app):
             log_scale, colormap
         );
 
-    # --- NEW: Callback to manage dynamic UI controls ---
     @app.callback(
         Output('res2-container', 'style'),
         Output('visual-options-container', 'style'),
@@ -142,17 +134,15 @@ def register_interaction_callbacks(app):
         Input('inv2-dropdown', 'value')
     )
     def manage_dynamic_controls(offset, inv1, inv2):
-        # 1. Get plot type
         inv1_type = 'TORSION' if inv1 in TORSION_INVARIANTS else 'NON_TORSION'
         inv2_type = 'TORSION' if inv2 in TORSION_INVARIANTS else 'NON_TORSION'
         
-        plot_type = 'STATS_ONLY' # Default
+        plot_type = 'STATS_ONLY'
         if inv1_type == 'TORSION' and inv2_type == 'TORSION':
             plot_type = '3D_HEATMAP'
         elif inv1_type == 'TORSION' or inv2_type == 'TORSION':
             plot_type = '1D_HISTO'
             
-        # 2. Handle Offset 0 (Residue 2 and Invariant filtering)
         hide_style = {'display': 'none'}
         show_style = {'display': 'block'}
         
@@ -169,34 +159,25 @@ def register_interaction_callbacks(app):
             if inv2:
                 inv1_options = [opt for opt in inv1_options if opt['value'] != inv2]
         
-        # 3. Handle Visual Options visibility
         if plot_type == 'STATS_ONLY':
-            # Hide all visual options
             return res2_style, hide_style, no_update, no_update, no_update, no_update, inv1_options, inv2_options
         
         elif plot_type == '1D_HISTO':
-            # Show X-axis and Scale, hide Y-axis and Colormap
             x_style = show_style
             y_style = hide_style
             map_style = hide_style
             scale_style = show_style
             
-            # 1D Histo only plots on one axis. inv1 or inv2?
-            # Based on v7, the TORSION is the one that gets plotted.
-            if inv2_type == 'TORSION': # Y-axis is the histo
-                x_style, y_style = y_style, x_style # Swap visibility
+            if inv2_type == 'TORSION':
+                x_style, y_style = y_style, x_style
             
             return res2_style, show_style, x_style, y_style, map_style, scale_style, inv1_options, inv2_options
 
         elif plot_type == '3D_HEATMAP':
-            # Show all
             return res2_style, show_style, show_style, show_style, show_style, show_style, inv1_options, inv2_options
 
-        # Default fallback
         return res2_style, show_style, show_style, show_style, show_style, show_style, inv1_options, inv2_options
-    # --- END NEW ---
 
-    # --- NEW: Callback to set default axis limits ---
     @app.callback(
         Output('xaxis-min-input', 'value', allow_duplicate=True),
         Output('xaxis-max-input', 'value', allow_duplicate=True),
@@ -207,18 +188,16 @@ def register_interaction_callbacks(app):
         prevent_initial_call=True
     )
     def set_default_axis_limits(inv1, inv2):
-        # { inv: [min, max], ... }
         defaults = {
-            'tau_NA': [0, 360],    # phi
-            'tau_AC': [-90, 270],  # psi
-            'tau_CN': [-90, 270],  # omega
+            'tau_NA': [0, 360], # phi
+            'tau_AC': [-90, 270], # psi
+            'tau_CN': [-90, 270], # omega
         }
         
         x_min, x_max = defaults.get(inv1, [no_update, no_update])
         y_min, y_max = defaults.get(inv2, [no_update, no_update])
         
         return x_min, x_max, y_min, y_max
-    # --- END NEW ---
 
     @app.callback(
         Output('confirm-clear-modal', 'is_open'), Output('last-clicked-panel-store', 'data'),
@@ -312,7 +291,6 @@ def register_interaction_callbacks(app):
         job_type = state.get('job_type'); modal_title = state.get('title', 'Focus View');
         current_view = state.get('view')
         
-        # --- Get panel-specific scale/colormap ---
         log_scale = state.get('log_scale', True)
         colormap = state.get('colormap', 'Custom Rainbow')
         
@@ -379,7 +357,6 @@ def register_interaction_callbacks(app):
         current_view = state.get('view')
         title_str = state.get('title', 'panel_data').replace(' ', '_').replace('+', '').replace('(', '').replace(')', '').replace(':', '')
 
-        # --- Get panel-specific scale/colormap ---
         log_scale = state.get('log_scale', True)
         colormap = state.get('colormap', 'Custom Rainbow')
 

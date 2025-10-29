@@ -1,18 +1,14 @@
-# --- Constants for v5 ---
-# This file holds all shared configuration variables for the application.
+# --- Constants for PROT ---
 
-# Database path (UPDATED to point to the v7 database)
 DB_PATH = 'proteins_app.db'
-MAX_GRAPHS = 6 # The number of static graph placeholders to create
+MAX_GRAPHS = 6 # The number of graph panels to create
 
-# Ordered for the dropdowns as requested
 INVARIANT_ORDER = [
-    'tau_NA', 'tau_AC', 'tau_CN', # Torsions (phi, psi, omega)
-    'angle_N', 'angle_A', 'angle_C', # Angles
-    'length_N', 'length_A', 'length_C' # Lengths
-]
+    'tau_NA', 'tau_AC', 'tau_CN',
+    'angle_N', 'angle_A', 'angle_C',
+    'length_N', 'length_A', 'length_C'
+] # Ordered for the dropdowns
 
-# --- NEW: Lists for logic and new dropdowns ---
 TORSION_INVARIANTS = ['tau_NA', 'tau_AC', 'tau_CN']
 NON_TORSION_INVARIANTS = ['length_N', 'length_A', 'length_C', 'angle_N', 'angle_A', 'angle_C']
 
@@ -20,9 +16,6 @@ RESIDUE_CONTEXTS = [
     "Any", "A", "C", "D", "E", "F", "G", "H", "I", "K", "L", 
     "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"
 ]
-# --- END NEW ---
-
-# Shorthand for stats display and dropdowns (Updated to Unicode)
 INVARIANT_SHORTHAND = {
     'tau_NA': 'φ', 'tau_AC': 'ψ', 'tau_CN': 'ω',
     'angle_N': 'α(N)', 'angle_A': 'α(A)', 'angle_C': 'α(C)',

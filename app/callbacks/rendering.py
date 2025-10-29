@@ -9,11 +9,9 @@ from constants import (
 import math
 import time
 
-# --- HELPER: 1D Figure Generators (UPDATED) ---
-
 def create_1D_histo_figure(data, title, inv_name, log_scale):
     """Creates a Plotly Bar chart for 1D Histogram data."""
-    if not data: # Handle case where histo data might be missing
+    if not data:
         fig = go.Figure()
         fig.update_layout(title=f"{title} (No Histogram Data)", margin=dict(l=0, r=0, b=0, t=40))
         return fig
@@ -35,13 +33,7 @@ def create_1D_histo_figure(data, title, inv_name, log_scale):
     )
     return fig
 
-# --- HELPER: create_stat_card (REMOVED) ---
-# This function is no longer used as all stats views now use the combined table.
-
-
-# --- HELPER: 3D Figure Generator (Original + Syntax Fixes) ---
 def create_3D_figure(data, title, uirevision_key, log_scale, colormap, inv1_name=None, inv2_name=None, x_lims=None, y_lims=None):
-    # --- HELPER FUNCTIONS ---
     def get_invariant_type(inv_name):
         if not inv_name: return 'unknown'
         if inv_name in ['tau_NA', 'tau_AC', 'tau_CN', 'angle_N', 'angle_A', 'angle_C']: return 'angular'
@@ -64,7 +56,6 @@ def create_3D_figure(data, title, uirevision_key, log_scale, colormap, inv1_name
             original_x_data, original_y_data, original_z_data = np.array([]), np.array([]), np.array([[]])
         else:
             xs, ys, zs = zip(*pts)
-            # Corrected dtype
             xs, ys, zs = np.array(xs, dtype=float), np.array(ys, dtype=float), np.array(zs, dtype=float)
             x_centers, y_centers = np.unique(xs), np.unique(ys)
             z_grid = np.zeros((len(y_centers), len(x_centers)), dtype=float)
@@ -99,9 +90,9 @@ def create_3D_figure(data, title, uirevision_key, log_scale, colormap, inv1_name
                 coord_min, coord_max = math.floor((min_lim - data_min) / cycle_range), math.ceil((max_lim - data_min) / cycle_range)
                 tile_indices = range(coord_min - 1, coord_max + 1)
                 if axis == 'xaxis':
-                     x_tile_range = [i * cycle_range for i in tile_indices]
+                    x_tile_range = [i * cycle_range for i in tile_indices]
                 else:
-                     y_tile_range = [i * cycle_range for i in tile_indices]
+                    y_tile_range = [i * cycle_range for i in tile_indices]
                 tick_step = 45
                 start_tick = math.ceil(min_lim / tick_step) * tick_step
                 tickvals = [t for t in range(start_tick, int(max_lim) + tick_step, tick_step)]
@@ -144,8 +135,6 @@ def create_3D_figure(data, title, uirevision_key, log_scale, colormap, inv1_name
     fig.update_layout(title=title, uirevision=uirevision_key, scene=scene_config, margin=dict(l=0, r=0, b=0, t=40))
     return fig
 
-
-# --- HELPER: Original build_3d_stats_overlay (v6 look, bottom-left) ---
 def build_3d_stats_overlay(stats_data):
     """ Builds the original v6 statistics overlay for 3D graphs. """
     if not stats_data: return None
@@ -154,10 +143,8 @@ def build_3d_stats_overlay(stats_data):
         html.P(f"# {pop:,}", title="Total Data Points"),
         html.P(f"Peak: ({peak_x:.1f}, {peak_y:.1f})" if isinstance(peak_x, (int, float)) and isinstance(peak_y, (int, float)) else "Peak: N/A", title="Peak Location"),
         html.P(f"▲ {stats_data.get('peak_freq', 0):,}", title="Peak Frequency")
-    ], className="stats-overlay") # Your original class from style.css
+    ], className="stats-overlay")
 
-
-# --- HELPER: create_combined_stats_table (UPDATED with Pearson's) ---
 def create_combined_stats_table(panel_state):
     """Builds a single, comprehensive stats table."""
     stats = panel_state.get('full_v7_stats', {})
@@ -168,12 +155,10 @@ def create_combined_stats_table(panel_state):
     inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
     title = panel_state.get('title', 'Statistics');
 
-    # Formatters
     fmt_f = lambda k, p=2: f"{stats.get(k, 0):.{p}f}" if stats.get(k) is not None else "N/A"
     fmt_i = lambda k: f"{stats.get(k, 0):,}" if stats.get(k) is not None else "N/A"
     table_style = dict(bordered=True, striped=True, hover=True, size="sm")
 
-    # 1. Comparison Table
     table_header = html.Thead(html.Tr([
         html.Th("Statistic"), html.Th(inv1_label), html.Th(inv2_label)
     ]))
@@ -187,7 +172,6 @@ def create_combined_stats_table(panel_state):
     ])
     comparison_table = dbc.Table([table_header, table_body], **table_style, className="mb-3")
 
-    # 2. Pairwise Stats Table (Replaced ListGroup)
     pearson_val = stats.get('pearson_correlation')
     pearson_str = f"{pearson_val:.4f}" if pearson_val is not None else "N/A"
     
@@ -199,7 +183,6 @@ def create_combined_stats_table(panel_state):
         html.Tr([html.Td("Peak Frequency"), html.Td(fmt_i('peak_freq'))]),
     ])
     pairwise_table = dbc.Table(pairwise_body, **table_style)
-    # --- END STYLE UPDATE ---
 
     return dbc.Card([
         dbc.CardHeader(title),
@@ -208,16 +191,12 @@ def create_combined_stats_table(panel_state):
             comparison_table,
             html.H5("Pairwise", className="card-subtitle mb-2 mt-3 text-muted"),
             pairwise_table
-        ], className="p-3") # Add padding
-    ], className="stat-card h-100", style={'overflowY': 'auto'}) # Make card scrollable
-# --- END NEW HELPER ---
+        ], className="p-3")
+    ], className="stat-card h-100", style={'overflowY': 'auto'})
 
-
-# --- HELPER: build_full_stats_table (Needed for Focus Modal) ---
-# --- (UPDATED with Pearson's) ---
 def build_full_stats_table(panel_state, panel_index=None, include_close_button=False):
     """ Builds the full v7 stats table for the focus modal. """
-    stats = panel_state.get('full_v7_stats') # Raw v7 data
+    stats = panel_state.get('full_v7_stats')
     inv1 = panel_state.get('inv1'); inv2 = panel_state.get('inv2');
     inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
     title = panel_state.get('title', 'Full Statistics');
@@ -240,39 +219,35 @@ def build_full_stats_table(panel_state, panel_index=None, include_close_button=F
     pair_stats = dbc.ListGroup([
         dbc.ListGroupItem(f"Population: {fmt_i('population')}"),
         dbc.ListGroupItem(f"Covariance: {fmt_f('covariance')}"),
-        dbc.ListGroupItem(f"Pearson's (ρ): {pearson_str}"), # <-- ADDED
+        dbc.ListGroupItem(f"Pearson's (ρ): {pearson_str}"),
         dbc.ListGroupItem(f"Peak Location (X, Y): ({fmt_f('peak_x', 2)}, {fmt_f('peak_y', 2)})"),
         dbc.ListGroupItem(f"Peak Frequency: {fmt_i('peak_freq')}"),
     ], flush=True, className="mt-3")
     layout = [
-        dbc.Row([dbc.Col(html.H4(title), width=12)], className="mb-3"), # No close button in focus
+        dbc.Row([dbc.Col(html.H4(title), width=12)], className="mb-3"),
         dbc.Table(table_header + table_body, bordered=True, striped=True, hover=True, size="sm"),
         html.H5("Pairwise Stats", className="mt-4"), pair_stats
     ]
-    return html.Div(layout, className="stats-table-modal p-3") # Class for modal styling
+    return html.Div(layout, className="stats-table-modal p-3")
 
-
-# --- build_graph_content (UPDATED with view-flipper logic) ---
 def build_graph_content(panel_state, log_scale, colormap, uirevision_key):
     """
     Selects the correct plot type and constructs the panel content based on the
     job_type AND the 'view' state.
     """
     job_type = panel_state.get('job_type')
-    current_view = panel_state.get('view') # 'graph', 'stats', or None
+    current_view = panel_state.get('view')
     title = panel_state.get('title')
     inv1 = panel_state.get('inv1'); inv2 = panel_state.get('inv2');
 
     if not job_type and panel_state.get('error'):
         return [html.Div([html.I(className="bi bi-exclamation-triangle-fill text-warning"), html.P(panel_state['error'], className="text-center small mt-2")], className="d-flex flex-column h-100 justify-content-center align-items.center placeholder-panel active")], None;
 
-    # --- 3D_HEATMAP (Flippable) ---
     if job_type == '3D_HEATMAP':
         if current_view == 'stats':
             content = create_combined_stats_table(panel_state)
             return [content], None
         
-        # Default to graph view
         stats_v6_overlay_data = panel_state.get('stats', {})
         stats_overlay_element = build_3d_stats_overlay(stats_v6_overlay_data)
         figure_data = panel_state.get('figure_data')
@@ -282,38 +257,28 @@ def build_graph_content(panel_state, log_scale, colormap, uirevision_key):
         content = dcc.Graph(figure=fig, style={'height': '100%'}, className="graph-item");
         return [content], stats_overlay_element;
 
-    # --- HISTO Jobs (Flippable) ---
     elif job_type == '1D_HISTO_VS_STATS' or job_type == '1D_STATS_VS_HISTO':
         if current_view == 'graph':
             histo_data = panel_state.get('figure_data_histo')
-            # Determine which invariant is the histogram
             histo_inv = inv1 if job_type == '1D_HISTO_VS_STATS' else inv2
-            # --- PASS log_scale ---
             fig = create_1D_histo_figure(histo_data, title, histo_inv, log_scale);
-            # --- END PASS ---
             content = dcc.Graph(figure=fig, style={'height': '100%'}, className="graph-item");
             return [content], None
         
-        # Default to stats view
         content = create_combined_stats_table(panel_state)
         return [content], None;
 
-    # --- STATS_ONLY Job (Not flippable) ---
     elif job_type == '1D_STATS_VS_STATS':
         content = create_combined_stats_table(panel_state)
         return [content], None;
 
-    # Fallback if job_type is unknown but state exists
     return [html.Div([html.I(className="bi bi-question-circle-fill text-muted"), html.P(f"Unknown plot type: {job_type}", className="text-center small mt-2")], className="d-flex flex-column h-100 justify-content-center align-items.center placeholder-panel active")], None;
 
-
-# --- MAIN CALLBACK: register_rendering_callbacks (UPDATED) ---
 def register_rendering_callbacks(app: Dash):
     @app.callback(
         [Output({'type': 'graph-col', 'index': i}, 'children') for i in range(MAX_GRAPHS)] +
         [Output('status-message-store', 'data', allow_duplicate=True)],
         Input('panel-states-store', 'data'), Input('active-panel-store', 'data'),
-        # --- REMOVED global scale/colormap inputs ---
         State('status-message-store', 'data'), prevent_initial_call=True
     )
     def update_all_panels(panel_states_json, active_panel_index, current_status):
@@ -328,26 +293,22 @@ def register_rendering_callbacks(app: Dash):
             job_type = state.get('job_type') if state else None;
             current_view = state.get('view') if state else None
 
-            # --- Button Group ---
             has_content = bool(state and not state.get('error'))
             can_focus_download = has_content
             
-            # --- UPDATED: Flipper Button Logic (using Bootstrap Icons) ---
             flipper_button = None
             if current_view == 'graph':
-                # On graph, button shows "stats" icon
                 flipper_button = dbc.Button(
-                    html.I(className="bi bi-table"), # <-- CHANGED
+                    html.I(className="bi bi-table"),
                     id={'type': 'toggle-view-button', 'index': i}, 
                     size="sm", title="Switch to Stats View"
                 )
             elif current_view == 'stats':
-                # On stats, button shows icon for its graph type
                 if job_type == '3D_HEATMAP':
-                    icon_class = "bi bi-box" # <-- CHANGED
+                    icon_class = "bi bi-box"
                     title = "Switch to 3D View"
-                else: # Must be a histo job
-                    icon_class = "bi bi-bar-chart-line" # <-- CHANGED
+                else:
+                    icon_class = "bi bi-bar-chart-line"
                     title = "Switch to Histogram View"
                 flipper_button = dbc.Button(
                     html.I(className=icon_class), 
@@ -355,7 +316,6 @@ def register_rendering_callbacks(app: Dash):
                     size="sm", title=title
                 )
             
-            # Build button list
             button_list = []
             if flipper_button:
                 button_list.append(flipper_button)
@@ -368,37 +328,31 @@ def register_rendering_callbacks(app: Dash):
             ])
             
             buttons = html.Div(button_list, style=buttons_style)
-            # --- END Button Group ---
 
             main_content = None; stats_overlay = None;
             try:
                 if not state:
-                    # Placeholder State
                     main_content = html.Div(
                         html.I(className="bi bi-plus-lg"),
                         id={'type': 'placeholder-button', 'index': i},
                         className=f"placeholder-panel d-flex h-100 justify-content-center align-items-center {'placeholder-active' if is_active else ''}"
                     )
                 else:
-                    # --- READ panel-specific settings ---
                     log_scale = state.get('log_scale', True)
                     colormap = state.get('colormap', 'Custom Rainbow')
-                    # --- END READ ---
 
-                    # Build graph/stats content
                     content_children, stats_overlay_element = build_graph_content(
                         state, log_scale, colormap, state.get('uirevision_key', str(i))
                     );
-                    main_content = content_children[0]; # The graph or stats content
-                    stats_overlay = stats_overlay_element; # Bottom-left overlay for 3D
+                    main_content = content_children[0];
+                    stats_overlay = stats_overlay_element;
 
             except Exception as e:
                 print(f"ERROR during panel rendering (index {i}): {e}"); import traceback; traceback.print_exc();
                 main_content = html.Div([html.I(className="bi bi-exclamation-octagon-fill text-danger"), html.P(f"Rendering Error: {e}", className="text-center small mt-2")], className="d-flex flex-column h-100 justify-content-center align-items-center placeholder-panel");
 
-            # Final Panel Assembly
             panel_children = [buttons, main_content];
-            if stats_overlay and current_view == 'graph': # Only show overlay on graph
+            if stats_overlay and current_view == 'graph':
                 panel_children.append(stats_overlay);
                 
             outputs.append(html.Div(panel_children, style=panel_style));

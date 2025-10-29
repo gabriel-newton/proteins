@@ -1,24 +1,17 @@
 from dash import Dash
 import dash_bootstrap_components as dbc
 import layouts
-from callbacks import register_callbacks # Import from the new package
+from callbacks import register_callbacks
 
-# Initialize the app for v6, loading Bootstrap themes and icons
 app = Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP, dbc.icons.BOOTSTRAP],
-    # --- THIS LINE MUST BE UNCOMMENTED ---
-    suppress_callback_exceptions=True # Allows callbacks targeting dynamic content
-    # --- END ---
-    # prevent_initial_callbacks=True # Often useful to prevent callbacks firing on load
+    suppress_callback_exceptions=True
 )
 server = app.server
 
-# Set the app layout and register callbacks
 app.layout = layouts.main_layout()
-register_callbacks(app) # Call the main registration function
+register_callbacks(app)
 
-# Run the app
 if __name__ == '__main__':
-    # Set debug=False for production/deployment
     app.run(debug=False, port=8050)

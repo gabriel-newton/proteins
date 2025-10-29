@@ -1,17 +1,12 @@
-"""
-Pipeline Step 2: Main Cache & Stats Generation (v7.2 - Unified Stats)
+## Pipeline Step 2: Main Cache & Stats Generation
+## 1. Generates the list of all 178,416 required data products
+##    categorized by their type (3D_VIZ, STATS_AND_HISTO, STATS_ONLY).
+## 2. Managing a parallel multiprocessing pool to process these jobs.
+## 3. Importing modular functions from the 'tools/' directory to perform
+##    the specific calculations.
+## 4. Saving all results to THREE final 'v7_...' database tables based
+##    on the required output type.
 
-This script orchestrates the entire backend pipeline. It is responsible for:
-1.  Generating the *correct* list of all 178,416 required data products,
-    categorized by their type (3D_VIZ, STATS_AND_HISTO, STATS_ONLY).
-2.  Managing a parallel multiprocessing pool to process these jobs.
-3.  Importing modular functions from the 'tools/' directory to perform
-    the specific calculations.
-4.  Saving all results to THREE final 'v7_...' database tables based
-    on the required output type.
-
-This script is resumable. Use --recalculate to force-drop all cache tables.
-"""
 import sqlite3
 import time
 import pandas as pd
@@ -23,18 +18,15 @@ import multiprocessing
 from itertools import product
 import argparse
 
-# Import the modular tools from the 'tools' subdirectory
 from tools.pipeline_utils import get_db_connection, get_invariant_limits
-# UPDATED: Renamed import
 from tools.generate_visualizations import generate_visualization_data
 
-# Import configuration from the new constants file
 from tools.pipeline_constants import (
     RESOLUTION_LEVELS, RESIDUE_CONTEXTS, ALL_INVARIANTS,
     TORSION_INVARIANTS, NON_TORSION_INVARIANTS
 )
 
-# --- Database Schemas (v7.2 - Unified Stats) ---
+# CACHE DB SCHEMA
 
 SCHEMA_V7_3D_CACHE = """
 CREATE TABLE IF NOT EXISTS v7_3D_cache (
@@ -52,7 +44,6 @@ CREATE TABLE IF NOT EXISTS v7_histo_cache (
 );
 """
 
-# UPDATED: New unified stats schema
 SCHEMA_V7_STATS = """
 CREATE TABLE IF NOT EXISTS v7_stats (
     plot_key TEXT PRIMARY KEY,
@@ -88,7 +79,6 @@ CREATE TABLE IF NOT EXISTS v7_stats (
 def get_existing_keys(conn):
     """Gets all plot_keys from the primary stats table to allow for resumability."""
     try:
-        # Check v7_stats, as it's the primary indicator of a completed job
         df = pd.read_sql_query(f"SELECT plot_key FROM v7_stats", conn)
         return set(df['plot_key'])
     except pd.io.sql.DatabaseError:
@@ -100,11 +90,6 @@ def drop_tables(conn):
     conn.execute("DROP TABLE IF EXISTS v7_3D_cache;")
     conn.execute("DROP TABLE IF EXISTS v7_histo_cache;")
     conn.execute("DROP TABLE IF EXISTS v7_stats;")
-    # Drop old v6 tables
-    print("Dropping old v6 tables...")
-    conn.execute("DROP TABLE IF EXISTS v6_3D_cache;")
-    conn.execute("DROP TABLE IF EXISTS v6_histo_cache;")
-    conn.execute("DROP TABLE IF EXISTS v6_stats;")
     print("Tables dropped.")
 
 
@@ -116,19 +101,15 @@ def process_job(job_args):
     Returns a tuple: 
     (job_key, job_type, cache_data, stats_data_tuple, histo_data_x, histo_data_y)
     """
-    # Unpack all arguments
     db_path, plot_key, job_type, inv1, offset, res1, inv2, res2, res_level = job_args
-    
     effective_res_level = res_level if res_level else RESOLUTION_LEVELS[0]
 
     try:
-        # UPDATED: Renamed function call
         heatmap_data, stats_dict, histo_data_x, histo_data_y = generate_visualization_data(
             db_path, inv1, inv2, offset, res1, res2, effective_res_level,
             TORSION_INVARIANTS
         )
         
-        # UPDATED: Format stats tuple for the new 19-column v7_stats table
         formatted_stats = (
             plot_key,
             job_type,
@@ -150,8 +131,7 @@ def process_job(job_args):
             stats_dict.get('peak_y'),
             stats_dict.get('peak_freq')
         )
-            
-        # Return all items for the main loop to process
+        
         return (
             plot_key, 
             job_type, 
@@ -162,7 +142,6 @@ def process_job(job_args):
         )
 
     except Exception as e:
-        # Return a tuple that matches the others, with error info
         return plot_key, "ERROR", None, (f"{type(e).__name__} - {e}",), None, None
 
 
@@ -178,13 +157,12 @@ def _write_batch_to_db(conn, results_3d_cache, results_1d_histo_cache, results_s
             cursor.executemany("INSERT OR REPLACE INTO v7_histo_cache (plot_key, axis, data) VALUES (?, ?, ?)", results_1d_histo_cache)
         
         if results_stats:
-            # UPDATED: New INSERT statement with 19 columns
             cursor.executemany("""
                 INSERT OR REPLACE INTO v7_stats 
                 (plot_key, job_type, population, 
-                 mean_x, variance_x, median_x, min_x, max_x, freq_at_mean_x,
-                 mean_y, variance_y, median_y, min_y, max_y, freq_at_mean_y,
-                 covariance, peak_x, peak_y, peak_freq) 
+                mean_x, variance_x, median_x, min_x, max_x, freq_at_mean_x,
+                mean_y, variance_y, median_y, min_y, max_y, freq_at_mean_y,
+                covariance, peak_x, peak_y, peak_freq) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, results_stats)
         
@@ -213,12 +191,11 @@ def main(db_path, recalculate=False):
     
     jobs_to_run = []
     
-    # --- START: CORRECTED JOB GENERATION LOGIC ---
     print("Generating jobs based on categorization rules...")
     
-    all_inv_pairs = list(product(ALL_INVARIANTS, ALL_INVARIANTS)) # 81 pairs
-    all_res_pairs = list(product(RESIDUE_CONTEXTS, RESIDUE_CONTEXTS)) # 441 pairs
-    all_offsets = range(5) # 5 offsets
+    all_inv_pairs = list(product(ALL_INVARIANTS, ALL_INVARIANTS))
+    all_res_pairs = list(product(RESIDUE_CONTEXTS, RESIDUE_CONTEXTS))
+    all_offsets = range(5) ## Future: Have range be un-hardcoded
     
     total_combinations = len(all_inv_pairs) * len(all_res_pairs) * len(all_offsets)
     print(f"Checking {total_combinations} (9x9x21x21x5) total combinations...")
@@ -234,12 +211,11 @@ def main(db_path, recalculate=False):
             for offset in all_offsets:
                 pbar.update(1)
 
-                # 2. Apply the exclusion rule (the 189 cases)
+                # Skip redundant graphing at offset 0
                 if (inv1 == inv2) and (offset == 0) and (res1 == res2):
                     count_excluded += 1
-                    continue # Skip this job
+                    continue
 
-                # 3. Apply the categorization rules
                 is_any_any = (res1 == "Any" and res2 == "Any")
                 is_torsion_torsion = (inv1 in TORSION_INVARIANTS and inv2 in TORSION_INVARIANTS)
                 is_other_other = (inv1 in NON_TORSION_INVARIANTS and inv2 in NON_TORSION_INVARIANTS)
@@ -247,7 +223,7 @@ def main(db_path, recalculate=False):
                 
                 job_key_base = f"{inv1}_vs_{inv2}+{offset}_{res1}_{res2}"
                 
-                # --- Rule 1 & 2: 3D Visualizations ---
+                # 3D Visualization for all any vs any
                 if is_any_any or is_torsion_torsion:
                     job_type = "3D_VIZ"
                     for res_level in RESOLUTION_LEVELS:
@@ -256,18 +232,18 @@ def main(db_path, recalculate=False):
                             jobs_to_run.append((db_path, plot_key, job_type, inv1, offset, res1, inv2, res2, res_level))
                         count_3d_viz += 1
                 
-                # --- Rule 4: Torsion vs Other (Stats + 2D Histo) ---
+                # Stats + Histogram for Torsion vs Non-Torsion (except any vs any)
                 elif is_torsion_other:
                     job_type = "STATS_AND_HISTO"
-                    plot_key = job_key_base # No res_level in key
+                    plot_key = job_key_base
                     if plot_key not in completed_jobs:
                         jobs_to_run.append((db_path, plot_key, job_type, inv1, offset, res1, inv2, res2, None))
                     count_stats_histo += 1
 
-                # --- Rule 3: Other vs Other (Stats Table Only) ---
+                # Stats Only for Non-Torsion comparisons (except any vs any)
                 elif is_other_other:
                     job_type = "STATS_ONLY"
-                    plot_key = job_key_base # No res_level in key
+                    plot_key = job_key_base
                     if plot_key not in completed_jobs:
                         jobs_to_run.append((db_path, plot_key, job_type, inv1, offset, res1, inv2, res2, None))
                     count_stats_only += 1
@@ -282,8 +258,6 @@ def main(db_path, recalculate=False):
     total_outputs = count_3d_viz + count_stats_histo + count_stats_only
     print(f"Total required outputs: {total_outputs}")
     print(f"Sanity Check: {count_3d_viz/len(RESOLUTION_LEVELS) + count_stats_histo + count_stats_only} base pairs = 178,416")
-    # --- END: CORRECTED JOB GENERATION LOGIC ---
-
 
     if not jobs_to_run:
         print("All required jobs are already complete. Nothing to do.")
@@ -312,13 +286,10 @@ def main(db_path, recalculate=False):
                     error_logs.append(f"{job_key} -> {stats_data_tuple[0]}")
                     continue
                 
-                # stats_data_tuple[2] is 'population'
-                if not (stats_data_tuple and stats_data_tuple[2] is not None and stats_data_tuple[2] > 0):
+                if not (stats_data_tuple and stats_data_tuple[2] is not None and stats_data_tuple[2] > 0): # stats_data_tuple[2] is 'population'
                     error_logs.append(f"{job_key} -> Population is 0 or stats are None")
                     continue
                 
-                # --- START: CORRECTED BATCH WRITE LOGIC ---
-                # Always save stats
                 results_stats.append(stats_data_tuple)
 
                 if job_type == "3D_VIZ":
@@ -335,8 +306,7 @@ def main(db_path, recalculate=False):
                         results_1d_histo_cache.append((job_key, 'y', histo_data_y))
                 
                 elif job_type == "STATS_ONLY":
-                    pass # Stats are already added
-                # --- END: CORRECTED BATCH WRITE LOGIC ---
+                    pass
 
                 if (i + 1) % BATCH_SIZE == 0:
                     _write_batch_to_db(conn, results_3d_cache, results_1d_histo_cache, results_stats)
@@ -344,10 +314,8 @@ def main(db_path, recalculate=False):
                     results_1d_histo_cache.clear()
                     results_stats.clear()
             
-            # Write final batch
             print("\nWriting final batch...")
             _write_batch_to_db(conn, results_3d_cache, results_1d_histo_cache, results_stats)
-
     
     if error_logs: 
         print(f"\n--- {len(error_logs)} Errors Encountered (or empty data sets) ---")
