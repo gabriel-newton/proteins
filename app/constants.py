@@ -16,10 +16,35 @@ RESIDUE_CONTEXTS = [
     "Any", "A", "C", "D", "E", "F", "G", "H", "I", "K", "L", 
     "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"
 ]
+
+AMINO_ACID_NAMES = {
+    "Any": "Any",
+    "A": "Alanine (A)",
+    "C": "Cysteine (C)",
+    "D": "Aspartic Acid (D)",
+    "E": "Glutamic Acid (E)",
+    "F": "Phenylalanine (F)",
+    "G": "Glycine (G)",
+    "H": "Histidine (H)",
+    "I": "Isoleucine (I)",
+    "K": "Lysine (K)",
+    "L": "Leucine (L)",
+    "M": "Methionine (M)",
+    "N": "Asparagine (N)",
+    "P": "Proline (P)",
+    "Q": "Glutamine (Q)",
+    "R": "Arginine (R)",
+    "S": "Serine (S)",
+    "T": "Threonine (T)",
+    "V": "Valine (V)",
+    "W": "Tryptophan (W)",
+    "Y": "Tyrosine (Y)"
+}
+
 INVARIANT_SHORTHAND = {
-    'tau_NA': 'φ', 'tau_AC': 'ψ', 'tau_CN': 'ω',
-    'angle_N': 'α(N)', 'angle_A': 'α(A)', 'angle_C': 'α(C)',
-    'length_N': 'L(N)', 'length_A': 'L(A)', 'length_C': 'L(C)'
+    'tau_NA': 'phi (φ)', 'tau_AC': 'psi (ψ)', 'tau_CN': 'omega (ω)',
+    'angle_N': 'Bond Angle NA', 'angle_A': 'Bond Angle AC', 'angle_C': 'Bond Angle CN',
+    'length_N': 'Length NA', 'length_A': 'Length AC', 'length_C': 'Length CN'
 }
 
 PLOTLY_COLORSCALES = [

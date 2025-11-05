@@ -11,12 +11,12 @@
 
 # --- Configuration ---
 PYTHON_SCRIPT="pipeline_01_joins.py"
-CONDA_ENV_NAME="v5" # Assuming env name is the same
+CONDA_ENV_NAME="v5"
 PROJECT_DIR="/users/sggnewto/_KmerV6/"
-DB_PATH="/users/sggnewto/fastscratch/proteins_v7.db" # Assuming DB path is the same
+DB_PATH="/users/sggnewto/fastscratch/proteins_v7.db"
 
 # --- Job ---
-set -eo pipefail # Exit immediately if a command exits with a non-zero status.
+set -eo pipefail
 echo "=== JOB START @ $(date) ==="
 cd "${PROJECT_DIR}" || { echo "Error: Project directory not found"; exit 1; }
 mkdir -p slurm_logs
@@ -26,7 +26,6 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_NAME}"
 
 echo "Executing script on database: ${DB_PATH}"
-# Using -u for unbuffered Python output, which is good for logging.
 if ! time python -u "${PYTHON_SCRIPT}" "${DB_PATH}"; then
     echo "--- PYTHON SCRIPT FAILED ---"
     echo "Check the error log for details: slurm_logs/pipeline1_${SLURM_JOB_ID}.err"

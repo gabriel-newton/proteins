@@ -8,8 +8,25 @@ from constants import (
 )
 import io
 import csv
+import numpy as np
 
-def create_stats_csv(panel_state: dict) -> str:
+def format_stat_value(value, use_sci_notation=False, precision=3):
+    """
+    Formats a numeric value either as fixed-point or scientific notation.
+    """
+    if value is None:
+        return "N/A"
+    try:
+        if use_sci_notation:
+            return f"{value:.{precision}e}"
+        else:
+            if abs(value) < 1e-4 and abs(value) > 0:
+                return f"{value:.{precision}e}"
+            return f"{value:.{precision}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+def create_stats_csv(panel_state: dict, use_sci_notation: bool = False) -> str:
     """Converts the full_v7_stats dictionary to a CSV string."""
     stats_data = panel_state.get('full_v7_stats')
     if not stats_data:
@@ -47,21 +64,31 @@ def create_stats_csv(panel_state: dict) -> str:
     
     for key, friendly_name in stat_order:
         value = stats_data.get(key)
+        
         if value is None:
             value_str = "N/A"
-        elif isinstance(value, float):
-            if abs(value) > 1e-3 or value == 0:
-                value_str = f"{value:.4f}"
-            else:
-                value_str = f"{value:.4e}"
+        elif isinstance(value, (int, np.integer)):
+            value_str = f"{value:,}"
+        elif isinstance(value, (float, np.floating)):
+            prec = 4 if key == 'pearson_correlation' else 3
+            value_str = format_stat_value(value, use_sci_notation, precision=prec)
         else:
             value_str = str(value)
+            
         writer.writerow([friendly_name, value_str])
         
     return output.getvalue()
 
 
 def register_interaction_callbacks(app):
+
+    @app.callback(
+        Output('sci-notation-store', 'data'),
+        Input('sci-notation-switch', 'value')
+    )
+    def update_sci_notation_store(switch_value):
+        """Saves the global scientific notation preference."""
+        return switch_value
 
     @app.callback(
         Output('xaxis-limit-label', 'children'),
@@ -83,16 +110,25 @@ def register_interaction_callbacks(app):
         Output('yaxis-max-input', 'value'),
         Output('scale-switch', 'value'),
         Output('colormap-dropdown', 'value'),
+        Output('sci-notation-switch', 'value'),
         Input({'type': 'config-button', 'index': ALL}, 'n_clicks'),
         Input({'type': 'placeholder-button', 'index': ALL}, 'n_clicks'),
-        State('panel-states-store', 'data'), prevent_initial_call=True
+        State('panel-states-store', 'data'),
+        State('sci-notation-store', 'data'),
+        prevent_initial_call=True
     )
-    def update_active_panel(config_clicks, placeholder_clicks, panel_states_json):
+    def update_active_panel(config_clicks, placeholder_clicks, panel_states_json, sci_notation_pref):
         triggered_id_dict = ctx.triggered_id;
+        
+        default_return = (
+            0, "Configure Panel 1", 'tau_NA', 'tau_AC', 0, 'Any', 'Any', 
+            None, None, None, None, True, 'Custom Rainbow', sci_notation_pref or False
+        )
+
         if not triggered_id_dict:
             config_triggered = any(c is not None for c in config_clicks); placeholder_triggered = any(p is not None for p in placeholder_clicks);
             if not config_triggered and not placeholder_triggered: 
-                return 0, "Configure Panel 1", 'tau_NA', 'tau_AC', 0, 'Any', 'Any', None, None, None, None, True, 'Custom Rainbow'
+                return default_return
             else: return no_update;
         try:
             if isinstance(triggered_id_dict, dict) and 'index' in triggered_id_dict: active_panel_index = triggered_id_dict['index'];
@@ -117,7 +153,7 @@ def register_interaction_callbacks(app):
             active_panel_index, f"Configure Panel {active_panel_index + 1}", 
             inv1, inv2, offset, res1, res2, 
             x_lims[0], x_lims[1], y_lims[0], y_lims[1],
-            log_scale, colormap
+            log_scale, colormap, sci_notation_pref or False
         );
 
     @app.callback(
@@ -189,9 +225,15 @@ def register_interaction_callbacks(app):
     )
     def set_default_axis_limits(inv1, inv2):
         defaults = {
-            'tau_NA': [0, 360], # phi
-            'tau_AC': [-90, 270], # psi
+            'tau_NA': [-180, 180], # phi
+            'tau_AC': [-180, 180], # psi
             'tau_CN': [-90, 270], # omega
+            'angle_N': [0, 360],
+            'angle_A': [0, 360],
+            'angle_C': [0, 360],
+            'length_N': [1, 2],
+            'length_A': [1, 2],
+            'length_C': [1, 2],
         }
         
         x_min, x_max = defaults.get(inv1, [no_update, no_update])
@@ -272,9 +314,10 @@ def register_interaction_callbacks(app):
         Output('focus-modal-body', 'children'), Output('last-clicked-panel-store', 'data', allow_duplicate=True),
         Input({'type': 'focus-button', 'index': ALL}, 'n_clicks'),
         State('panel-states-store', 'data'),
+        State('sci-notation-store', 'data'),
         prevent_initial_call=True
     )
-    def open_focus_modal(focus_clicks, panel_states_json):
+    def open_focus_modal(focus_clicks, panel_states_json, sci_notation_pref):
         triggered_id_dict = ctx.triggered_id;
         if not triggered_id_dict or not any(c for c in focus_clicks if c is not None): 
             return no_update, no_update, no_update, no_update;
@@ -309,7 +352,7 @@ def register_interaction_callbacks(app):
                 return True, modal_title, modal_body_content, panel_index;
 
             elif current_view == 'stats' or job_type == '1D_STATS_VS_STATS':
-                stats_table = build_full_stats_table(state)
+                stats_table = build_full_stats_table(state, use_sci_notation=sci_notation_pref)
                 modal_body_content = stats_table
                 return True, modal_title, modal_body_content, panel_index;
 
@@ -337,9 +380,10 @@ def register_interaction_callbacks(app):
         Output("download-html", "data"), 
         Input({'type': 'download-button', 'index': ALL}, 'n_clicks'),
         State('panel-states-store', 'data'),
+        State('sci-notation-store', 'data'),
         prevent_initial_call=True
     )
-    def download_graph_html(download_clicks, panel_states_json):
+    def download_graph_html(download_clicks, panel_states_json, sci_notation_pref):
         triggered_id_dict = ctx.triggered_id;
         if not triggered_id_dict or not any(c for c in download_clicks if c is not None): 
             return no_update;
@@ -376,8 +420,7 @@ def register_interaction_callbacks(app):
             
             elif current_view == 'stats' or job_type == '1D_STATS_VS_STATS':
                 if not state.get('full_v7_stats'): return no_update
-                
-                csv_string = create_stats_csv(state) 
+                csv_string = create_stats_csv(state, use_sci_notation=sci_notation_pref) 
                 filename = f"{title_str}_stats.csv";
                 return dict(content=csv_string, filename=filename, type="text/csv", base64=False)
 

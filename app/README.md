@@ -1,65 +1,75 @@
-# Protein Plot Panel
+# OriViz Release v0.7
 
-Protein Plot Panel is an interactive Dash dashboard for the dynamic visualization of pre-computed protein backbone and residue invariants. It provides a high-density, multi-panel interface for exploring conformational data, toggling between 3D Ramachandran-style plots, 1D histograms, and detailed statistical summaries.
+First testing release of the Protein Offset-Residue Invariant Visualization Dashboard (OriViz).
+## How to set up
 
-## 🚀 Features
+### 1. Install Python 3.10 or newer
+* Download from [python.org/downloads](https://www.python.org/downloads/)
+* During installation (Windows): check “Add Python to PATH”.
 
-* **Multi-Panel Grid**: View up to 6 plots or statistical tables simultaneously.
-* **Dynamic Panel Content**: Renders three types of content:
-    * **3D Heatmaps**: For Torsion-vs-Torsion comparisons.
-    * **1D Histograms**: For Torsion-vs-Non-Torsion comparisons.
-    * **Statistical Tables**: A comprehensive summary for all comparison types.
-* **"Flipper" Interface**: Seamlessly toggle between graph and stats views on any 3D or 1D panel.
-* **Context-Aware Downloads**: Download the current view.
-    * Graphs are downloaded as interactive `.html` files.
-    * Statistics are downloaded as a clean `.csv` file.
-* **Intelligent UI**: The configuration panel dynamically hides/shows options.
-    * Disables `X vs. X` invariant selection at offset 0.
-    * Hides the "Residue 2" dropdown at offset 0.
-    * Hides visual options (colormap, axis limits) for stats-only queries.
-* **Per-Panel Visuals**: Log/Linear scale and Colormap settings are saved independently for each panel.
+### 2. Download application Code
 
-## Prerequisites
+* **`OriViz-v0.7.zip`** - The front-end Dash application (found below).
+    *Un-zip to desired location (e.g. `Downloads/OriViz/`)*
 
-This application **does not** generate data. It is a visualization tool for a pre-existing database.
+### 3. Required Database (Hugging Face)
 
-* You must have a SQLite database named `proteins_app.db` in the root directory.
-* This database must match the "v7" schema, containing the tables:
-    * `v7_stats`
-    * `v7_3D_cache`
-    * `v7_histo_cache`
+* **[Download `proteins_app.db` from my Hugging Face datasets](https://huggingface.co/datasets/gabriel-newton/proteins/resolve/main/proteins_app.db?download=true)**  `3.11 GB`
+    *Place this file in the same directory as `app.py` (e.g. inside `Downloads/OriViz/`)*
 
-## ⚙️ Installation
+## How to Run
 
-1.  Clone this repository:
-    ```bash
-    git clone [your-repo-url]
-    cd [your-repo-name]
-    ```
+### 1. Run `run.py`
+* Navigate to the application folder.
+* Double-click `run.py` to run it with Python, or open a terminal in that folder and type `python run.py`.
+* The script will first install all required Python packages (see list below).
+* It will then start the application server on `http://127.0.0.1:8050`.
 
-2.  Create and activate a Python virtual environment:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate
-    ```
+### 2. Access the Application
+* Open [http://127.0.0.1:8050](http://127.0.0.1:8050) in your preferred web browser.
 
-3.  Install the required dependencies:
-    ```bash
-    # (Create a requirements.txt file with the following content)
-    # pip install -r requirements.txt
-    ```
-    **`requirements.txt`:**
-    ```
-    dash
-    dash-bootstrap-components
-    pandas
-    numpy
-    plotly
-    ```
+### 3. Stop the Application
+* To quit, go to the terminal where `run.py` is running and press `CTRL+C`.
 
-## 🏃‍♂️ Running the Application
+## How to Use
 
-Once your `proteins_app.db` file is in place and dependencies are installed, run the app:
+The side panel controls the query. The main window shows the output.
 
-```bash
-python app.py
+### 1. Panel Selection
+* Select a desired panel to configure (default: Panel 1).
+
+### 2. Offset Selection
+* Select a backbone offset `i` vs `i+n` (default: 0).
+* This choice changes the "Residue Context Filtering" options below.
+
+### 3. Invariant Parameter Selection
+* Select 2 invariant parameters to compare (default: $\phi$ vs $\psi$).
+
+### 4. Residue Context Filtering
+* **If Offset = 0:** One "Residue" drop-down appears. This filters all data to a single residue type (default: Any).
+* **If Offset > 0:** Two dropdowns ("Residue 1" and "Residue 2") appear. This query is **directional**. (default: Any vs Any)
+    * `Residue 1` refers to the residue at position `i`.
+    * `Residue 2` refers to the residue at position `i+n`.
+    * *Example:* Offset = 2, Res 1 = A, Res 2 = P. This *only* shows data for Alanine (A) followed by Proline (P) two steps later.
+
+### 5. Analyze Visual Output
+* By default, "Any vs Any" residue comparisons produce a **3D Heatmap**.
+* Otherwise, the output will change based on your invariant selection:
+    * **3D Heatmap & Stats Panel:** Renders if two torsion angles ($\phi$, $\psi$, $\omega$) are selected.
+    * **Stats Panel & 1D Torsion Histogram:** Renders if only one torsion invariant is selected (e.g., $\phi$ vs $\alpha(N)$).
+    * **Stats Panel:** Renders if any other combination is selected (e.g., $\alpha(N)$ vs $L(N)$).
+
+### 6. Toggle and Download
+- Stats/Graph toggle button is the first button available unless only a Stats Panel is produced. This button switched between the available graph and stats views.
+* Focus button opens a full screen modal of whatever is displayed on the relevant panel.
+* The Download button is context-aware and downloads interactive HTML files when a graph is being viewed, otherwise (i.e. when statistics are being viewed) a CSV of the statistics table is downloaded instead.
+* The Config (cog) button focuses the left configuration section on the appropriate panel.
+* The Clear button removes the given visualization (confirmation required).
+
+## Dependencies (for information only)
+The `run.py` script will automatically install these packages for you:
+* `dash`
+* `dash-bootstrap-components`
+* `pandas`
+* `numpy`
+* `plotly`

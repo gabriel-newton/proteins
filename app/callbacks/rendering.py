@@ -4,10 +4,55 @@ import plotly.graph_objects as go
 from dash import Dash, dcc, html, Input, Output, State, no_update, ctx, ALL
 import dash_bootstrap_components as dbc
 from constants import (
-    INVARIANT_SHORTHAND, N_RAINBOW, MAX_GRAPHS
+    INVARIANT_SHORTHAND, N_RAINBOW, MAX_GRAPHS, TORSION_INVARIANTS
 )
 import math
 import time
+
+def format_stat_value(value, use_sci_notation=False, precision=3):
+    """
+    Formats a numeric value either as fixed-point or scientific notation.
+    """
+    if value is None:
+        return "N/A"
+    try:
+        if use_sci_notation:
+            return f"{value:.{precision}e}"
+        else:
+            if abs(value) < 1e-4 and abs(value) > 0:
+                return f"{value:.{precision}e}"
+            return f"{value:.{precision}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+def normalize_angular_stat(value, limits, is_angular):
+    """
+    Shifts an angular statistic by 360 degrees if it falls outside
+    the user-defined limits and a shifted value falls inside.
+    """
+    if not is_angular or value is None:
+        return value
+    
+    try:
+        min_lim, max_lim = limits
+        if min_lim is None or max_lim is None:
+            return value
+    except (TypeError, ValueError):
+        return value
+        
+    if min_lim < max_lim:
+        if min_lim <= value <= max_lim:
+            return value
+        
+        val_plus_360 = value + 360
+        if min_lim <= val_plus_360 <= max_lim:
+            return val_plus_360
+            
+        val_minus_360 = value - 360
+        if min_lim <= val_minus_360 <= max_lim:
+            return val_minus_360
+            
+    return value
 
 def create_1D_histo_figure(data, title, inv_name, log_scale):
     """Creates a Plotly Bar chart for 1D Histogram data."""
@@ -25,11 +70,9 @@ def create_1D_histo_figure(data, title, inv_name, log_scale):
         title=title,
         xaxis_title=INVARIANT_SHORTHAND.get(inv_name, inv_name),
         yaxis_title="Frequency",
-        # --- ADDED: Log scale for 1D histo ---
         yaxis_type="log" if log_scale else "linear",
-        # --- END ADDED ---
         margin=dict(l=20, r=20, b=30, t=40),
-        uirevision=str(time.time()) # Force redraw
+        uirevision=str(time.time())
     )
     return fig
 
@@ -145,7 +188,7 @@ def build_3d_stats_overlay(stats_data):
         html.P(f"▲ {stats_data.get('peak_freq', 0):,}", title="Peak Frequency")
     ], className="stats-overlay")
 
-def create_combined_stats_table(panel_state):
+def create_combined_stats_table(panel_state, use_sci_notation=False):
     """Builds a single, comprehensive stats table."""
     stats = panel_state.get('full_v7_stats', {})
     if not stats:
@@ -154,8 +197,19 @@ def create_combined_stats_table(panel_state):
     inv1 = panel_state.get('inv1'); inv2 = panel_state.get('inv2');
     inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
     title = panel_state.get('title', 'Statistics');
+    
+    x_lims = panel_state.get('x_lims'); y_lims = panel_state.get('y_lims');
+    is_angular_x = inv1 in TORSION_INVARIANTS
+    is_angular_y = inv2 in TORSION_INVARIANTS
 
-    fmt_f = lambda k, p=2: f"{stats.get(k, 0):.{p}f}" if stats.get(k) is not None else "N/A"
+    def get_stat(key, axis, p=3):
+        val = stats.get(f'{key}_{axis}')
+        if key in ['mean', 'median', 'min', 'max', 'peak']:
+            limits = x_lims if axis == 'x' else y_lims
+            is_angular = is_angular_x if axis == 'x' else is_angular_y
+            val = normalize_angular_stat(val, limits, is_angular)
+        return format_stat_value(val, use_sci_notation, precision=p)
+
     fmt_i = lambda k: f"{stats.get(k, 0):,}" if stats.get(k) is not None else "N/A"
     table_style = dict(bordered=True, striped=True, hover=True, size="sm")
 
@@ -163,23 +217,23 @@ def create_combined_stats_table(panel_state):
         html.Th("Statistic"), html.Th(inv1_label), html.Th(inv2_label)
     ]))
     table_body = html.Tbody([
-        html.Tr([html.Td("Mean"), html.Td(fmt_f('mean_x')), html.Td(fmt_f('mean_y'))]),
-        html.Tr([html.Td("Variance"), html.Td(fmt_f('variance_x')), html.Td(fmt_f('variance_y'))]),
+        html.Tr([html.Td("Mean"), html.Td(get_stat('mean', 'x')), html.Td(get_stat('mean', 'y'))]),
+        html.Tr([html.Td("Variance"), html.Td(get_stat('variance', 'x')), html.Td(get_stat('variance', 'y'))]),
         html.Tr([html.Td("Freq. at Mean"), html.Td(fmt_i('freq_at_mean_x')), html.Td(fmt_i('freq_at_mean_y'))]),
-        html.Tr([html.Td("Median"), html.Td(fmt_f('median_x')), html.Td(fmt_f('median_y'))]),
-        html.Tr([html.Td("Min"), html.Td(fmt_f('min_x')), html.Td(fmt_f('min_y'))]),
-        html.Tr([html.Td("Max"), html.Td(fmt_f('max_x')), html.Td(fmt_f('max_y'))]),
+        html.Tr([html.Td("Median"), html.Td(get_stat('median', 'x')), html.Td(get_stat('median', 'y'))]),
+        html.Tr([html.Td("Min"), html.Td(get_stat('min', 'x')), html.Td(get_stat('min', 'y'))]),
+        html.Tr([html.Td("Max"), html.Td(get_stat('max', 'x')), html.Td(get_stat('max', 'y'))]),
     ])
     comparison_table = dbc.Table([table_header, table_body], **table_style, className="mb-3")
-
-    pearson_val = stats.get('pearson_correlation')
-    pearson_str = f"{pearson_val:.4f}" if pearson_val is not None else "N/A"
+    
+    peak_x_str = get_stat('peak', 'x', p=2)
+    peak_y_str = get_stat('peak', 'y', p=2)
     
     pairwise_body = html.Tbody([
         html.Tr([html.Td("Population"), html.Td(fmt_i('population'))]),
-        html.Tr([html.Td("Covariance"), html.Td(fmt_f('covariance', 3))]),
-        html.Tr([html.Td("Pearson's (ρ)"), html.Td(pearson_str)]), # <-- ADDED
-        html.Tr([html.Td("Peak Location"), html.Td(f"({fmt_f('peak_x')}, {fmt_f('peak_y')})")]),
+        html.Tr([html.Td("Covariance"), html.Td(format_stat_value(stats.get('covariance'), use_sci_notation, precision=3))]),
+        # html.Tr([html.Td("Pearson's (ρ)"), html.Td(pearson_str)]),
+        html.Tr([html.Td("Peak Location"), html.Td(f"({peak_x_str}, {peak_y_str})")]),
         html.Tr([html.Td("Peak Frequency"), html.Td(fmt_i('peak_freq'))]),
     ])
     pairwise_table = dbc.Table(pairwise_body, **table_style)
@@ -194,35 +248,49 @@ def create_combined_stats_table(panel_state):
         ], className="p-3")
     ], className="stat-card h-100", style={'overflowY': 'auto'})
 
-def build_full_stats_table(panel_state, panel_index=None, include_close_button=False):
+def build_full_stats_table(panel_state, use_sci_notation=False):
     """ Builds the full v7 stats table for the focus modal. """
     stats = panel_state.get('full_v7_stats')
     inv1 = panel_state.get('inv1'); inv2 = panel_state.get('inv2');
     inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
     title = panel_state.get('title', 'Full Statistics');
     if not stats: return dbc.Alert("Could not load statistics.", color="danger");
-    fmt_f = lambda k, p=3: f"{stats.get(k, 0):.{p}f}" if stats.get(k) is not None else "N/A";
+
+    x_lims = panel_state.get('x_lims'); y_lims = panel_state.get('y_lims');
+    is_angular_x = inv1 in TORSION_INVARIANTS
+    is_angular_y = inv2 in TORSION_INVARIANTS
+
+    def get_stat(key, axis, p=3):
+        val = stats.get(f'{key}_{axis}')
+        if key in ['mean', 'median', 'min', 'max', 'peak']:
+            limits = x_lims if axis == 'x' else y_lims
+            is_angular = is_angular_x if axis == 'x' else is_angular_y
+            val = normalize_angular_stat(val, limits, is_angular)
+        return format_stat_value(val, use_sci_notation, precision=p)
+
     fmt_i = lambda k: f"{stats.get(k, 0):,}" if stats.get(k) is not None else "N/A";
-    
-    pearson_val = stats.get('pearson_correlation')
-    pearson_str = f"{pearson_val:.4f}" if pearson_val is not None else "N/A"
 
     table_header = [html.Thead(html.Tr([html.Th("Statistic"), html.Th(inv1_label), html.Th(inv2_label)]))]
     table_body = [html.Tbody([
-            html.Tr([html.Td("Mean"), html.Td(fmt_f('mean_x')), html.Td(fmt_f('mean_y'))]),
-            html.Tr([html.Td("Variance"), html.Td(fmt_f('variance_x')), html.Td(fmt_f('variance_y'))]),
-            html.Tr([html.Td("Median"), html.Td(fmt_f('median_x')), html.Td(fmt_f('median_y'))]),
-            html.Tr([html.Td("Min"), html.Td(fmt_f('min_x')), html.Td(fmt_f('min_y'))]),
-            html.Tr([html.Td("Max"), html.Td(fmt_f('max_x')), html.Td(fmt_f('max_y'))]),
+            html.Tr([html.Td("Mean"), html.Td(get_stat('mean', 'x')), html.Td(get_stat('mean', 'y'))]),
+            html.Tr([html.Td("Variance"), html.Td(get_stat('variance', 'x')), html.Td(get_stat('variance', 'y'))]),
+            html.Tr([html.Td("Median"), html.Td(get_stat('median', 'x')), html.Td(get_stat('median', 'y'))]),
+            html.Tr([html.Td("Min"), html.Td(get_stat('min', 'x')), html.Td(get_stat('min', 'y'))]),
+            html.Tr([html.Td("Max"), html.Td(get_stat('max', 'x')), html.Td(get_stat('max', 'y'))]),
             html.Tr([html.Td("Freq. at Mean"), html.Td(fmt_i('freq_at_mean_x')), html.Td(fmt_i('freq_at_mean_y'))]),
         ])]
+        
+    peak_x_str = get_stat('peak', 'x', p=2)
+    peak_y_str = get_stat('peak', 'y', p=2)
+
     pair_stats = dbc.ListGroup([
         dbc.ListGroupItem(f"Population: {fmt_i('population')}"),
-        dbc.ListGroupItem(f"Covariance: {fmt_f('covariance')}"),
-        dbc.ListGroupItem(f"Pearson's (ρ): {pearson_str}"),
-        dbc.ListGroupItem(f"Peak Location (X, Y): ({fmt_f('peak_x', 2)}, {fmt_f('peak_y', 2)})"),
+        dbc.ListGroupItem(f"Covariance: {format_stat_value(stats.get('covariance'), use_sci_notation, precision=3)}"),
+        # dbc.ListGroupItem(f"Pearson's (ρ): {pearson_str}"),
+        dbc.ListGroupItem(f"Peak Location (X, Y): ({peak_x_str}, {peak_y_str})"),
         dbc.ListGroupItem(f"Peak Frequency: {fmt_i('peak_freq')}"),
     ], flush=True, className="mt-3")
+    
     layout = [
         dbc.Row([dbc.Col(html.H4(title), width=12)], className="mb-3"),
         dbc.Table(table_header + table_body, bordered=True, striped=True, hover=True, size="sm"),
@@ -230,7 +298,7 @@ def build_full_stats_table(panel_state, panel_index=None, include_close_button=F
     ]
     return html.Div(layout, className="stats-table-modal p-3")
 
-def build_graph_content(panel_state, log_scale, colormap, uirevision_key):
+def build_graph_content(panel_state, log_scale, colormap, uirevision_key, use_sci_notation=False):
     """
     Selects the correct plot type and constructs the panel content based on the
     job_type AND the 'view' state.
@@ -245,7 +313,7 @@ def build_graph_content(panel_state, log_scale, colormap, uirevision_key):
 
     if job_type == '3D_HEATMAP':
         if current_view == 'stats':
-            content = create_combined_stats_table(panel_state)
+            content = create_combined_stats_table(panel_state, use_sci_notation)
             return [content], None
         
         stats_v6_overlay_data = panel_state.get('stats', {})
@@ -265,11 +333,11 @@ def build_graph_content(panel_state, log_scale, colormap, uirevision_key):
             content = dcc.Graph(figure=fig, style={'height': '100%'}, className="graph-item");
             return [content], None
         
-        content = create_combined_stats_table(panel_state)
+        content = create_combined_stats_table(panel_state, use_sci_notation)
         return [content], None;
 
     elif job_type == '1D_STATS_VS_STATS':
-        content = create_combined_stats_table(panel_state)
+        content = create_combined_stats_table(panel_state, use_sci_notation)
         return [content], None;
 
     return [html.Div([html.I(className="bi bi-question-circle-fill text-muted"), html.P(f"Unknown plot type: {job_type}", className="text-center small mt-2")], className="d-flex flex-column h-100 justify-content-center align-items.center placeholder-panel active")], None;
@@ -279,9 +347,10 @@ def register_rendering_callbacks(app: Dash):
         [Output({'type': 'graph-col', 'index': i}, 'children') for i in range(MAX_GRAPHS)] +
         [Output('status-message-store', 'data', allow_duplicate=True)],
         Input('panel-states-store', 'data'), Input('active-panel-store', 'data'),
+        Input('sci-notation-store', 'data'),
         State('status-message-store', 'data'), prevent_initial_call=True
     )
-    def update_all_panels(panel_states_json, active_panel_index, current_status):
+    def update_all_panels(panel_states_json, active_panel_index, sci_notation_pref, current_status):
         """ Renders all panels using the original v6 layout structure. """
         panel_states = json.loads(panel_states_json or '{}'); outputs = []; status_update = no_update;
         if ctx.triggered_id == 'panel-states-store' and current_status: status_update = "";
@@ -342,7 +411,7 @@ def register_rendering_callbacks(app: Dash):
                     colormap = state.get('colormap', 'Custom Rainbow')
 
                     content_children, stats_overlay_element = build_graph_content(
-                        state, log_scale, colormap, state.get('uirevision_key', str(i))
+                        state, log_scale, colormap, state.get('uirevision_key', str(i)), sci_notation_pref
                     );
                     main_content = content_children[0];
                     stats_overlay = stats_overlay_element;

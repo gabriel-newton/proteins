@@ -2,33 +2,39 @@ import dash_bootstrap_components as dbc
 from dash import dcc, html
 from constants import (
     INVARIANT_ORDER, INVARIANT_SHORTHAND, PLOTLY_COLORSCALES,
-    MAX_GRAPHS, RESIDUE_CONTEXTS
+    MAX_GRAPHS, RESIDUE_CONTEXTS, AMINO_ACID_NAMES
 )
 
 def build_config_panel():
     """Builds the main configuration panel."""
+
+    residue_options = [
+        {'label': AMINO_ACID_NAMES.get(res, res), 'value': res} 
+        for res in RESIDUE_CONTEXTS
+    ]
+
     return html.Div(
         className="left-panel",
         children=[
-            html.H3("Protein Plot Panel", className="app-title"),
+            html.H3("ProtNRD", className="app-title"),
             html.Hr(),
             html.H4("Configure Panel", id="active-panel-display"),
 
-            dbc.Label("Residue Offset"),
+            dbc.Label("Residue Step"),
             dcc.Dropdown(id='offset-dropdown', options=[{'label': f'+{i}', 'value': i} for i in range(5)], value=0),
 
 
-            dbc.Label("Invariant 1 (X-axis)", className="mt-3"),
+            dbc.Label("Component 1 (X-axis)", className="mt-3"),
             dcc.Dropdown(id='inv1-dropdown', options=[{'label': INVARIANT_SHORTHAND.get(i, i), 'value': i} for i in INVARIANT_ORDER], value='tau_NA'),
-            dbc.Label("Invariant 2 (Y-axis)", className="mt-3"),
+            dbc.Label("Component 2 (Y-axis)", className="mt-3"),
             dcc.Dropdown(id='inv2-dropdown', options=[{'label': INVARIANT_SHORTHAND.get(i, i), 'value': i} for i in INVARIANT_ORDER], value='tau_AC'),
             
-            dbc.Label("Residue 1", className="mt-3"),
-            dcc.Dropdown(id='res1-dropdown', options=[{'label': res, 'value': res} for res in RESIDUE_CONTEXTS], value='Any'),
+            dbc.Label("Residue Type 1", className="mt-3"),
+            dcc.Dropdown(id='res1-dropdown', options=residue_options, value='Any'),
 
             html.Div(id='res2-container', children=[
-                dbc.Label("Residue 2", className="mt-3"),
-                dcc.Dropdown(id='res2-dropdown', options=[{'label': res, 'value': res} for res in RESIDUE_CONTEXTS], value='Any'),
+                dbc.Label("Residue Type 2", className="mt-3"),
+                dcc.Dropdown(id='res2-dropdown', options=residue_options, value='Any'),
             ]),
 
             html.Hr(),
@@ -38,7 +44,7 @@ def build_config_panel():
                 
                 html.Div(id='scale-switch-container', children=[
                     dbc.Label("Scale"),
-                    dbc.Switch(id='scale-switch', label="Log / Linear", value=True),
+                    dbc.Switch(id='scale-switch', label="Linear / Log", value=True),
                 ]),
                 
                 html.Div(id='colormap-container', children=[
@@ -56,6 +62,11 @@ def build_config_panel():
                     dbc.Row([dbc.Col(dbc.Input(id='yaxis-min-input', type='number', placeholder='Min')), dbc.Col(dbc.Input(id='yaxis-max-input', type='number', placeholder='Max')),]),
                 ]),
             ]),
+            
+            html.Div([
+                dbc.Label("Stat Formatting"),
+                dbc.Switch(id='sci-notation-switch', label="Fixed / Scientific", value=False),
+            ], className="mt-3"),
 
             dbc.Button("Generate Graph", id="generate-graph-button", color="primary", className="w-100 mt-4")
         ]
@@ -73,6 +84,7 @@ def main_layout():
             dcc.Store(id='last-clicked-panel-store'),
             dcc.Store(id='graph-job-store'),
             dcc.Store(id='status-message-store'),
+            dcc.Store(id='sci-notation-store', storage_type='session', data=False),
 
             dbc.Row(
                 [

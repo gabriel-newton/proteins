@@ -149,13 +149,15 @@ def register_data_fetching_callbacks(app):
 
             inv1_label = INVARIANT_SHORTHAND.get(inv1, inv1); inv2_label = INVARIANT_SHORTHAND.get(inv2, inv2);
             res1_label = "" if res1 == 'Any' else f"({res1})"; res2_label = "" if res2 == 'Any' else f"({res2})";
-            title = f"{inv1_label}{res1_label} vs {inv2_label}{res2_label} +{offset}";
+            if offset == 0:
+                res2_label = res1_label
+            title = f"{inv1_label} {res1_label} vs {inv2_label} {res2_label} +{offset}";
 
             with sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True) as conn:
                 fetched_data = fetch_v7_data(conn, plot_key)
 
             stats_v7 = fetched_data['stats_v7']
-            pearson_val = None # Correlation Calc
+            pearson_val = None
             try:
                 var_x = stats_v7.get('variance_x')
                 var_y = stats_v7.get('variance_y')
@@ -209,7 +211,7 @@ def register_data_fetching_callbacks(app):
                 new_panel_state['figure_data_stats2'] = _transform_v7_stats_to_v6_1d_stats(stats_v7, axis='y')
 
             panel_states[str(active_panel_index)] = new_panel_state
-            return json.dumps(panel_states), f"Panel {active_panel_index + 1} updated."
+            return json.dumps(panel_states), f"Panel {active_panel_index + 1} updating..."
 
         except ValueError as e:
             error_state = {'error': str(e), 'title': 'No Data'}
